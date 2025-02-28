@@ -27,7 +27,7 @@
 using namespace chip::DeviceLayer;
 #endif
 
-#include "gpio_toggle.h" // newly added include for gpio_toggle
+#include "led_strip_control.h"
 
 static const char *TAG = "app_main";
 uint16_t light_endpoint_id = 0;
@@ -251,9 +251,9 @@ extern "C" void app_main()
     esp_matter::console::init();
 #endif
 
-    // Start the GPIO toggle task on pin 10.
-    err = start_gpio_toggle(10);
+    // Start the LED strip demo on GPIO 10 with 30 LEDs
+    err = start_led_strip_demo(10, 30);
     if (err != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to start GPIO toggle task");
+        ESP_LOGE(TAG, "Failed to start LED strip demo");
     }
 }
