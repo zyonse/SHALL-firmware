@@ -63,6 +63,7 @@ static void led_strip_task(void *arg)
             vTaskDelay(pdMS_TO_TICKS(50)); // Animation speed
         }
         
+        /*
         // Pattern 2: Flash white three times
         for (int j = 0; j < 3; j++) {
             // Turn all LEDs white
@@ -98,6 +99,7 @@ static void led_strip_task(void *arg)
                 vTaskDelay(pdMS_TO_TICKS(100));
             }
         }
+        */
     }
 }
 
@@ -166,7 +168,7 @@ extern "C" {
         // Store state for the task
         state.strip = led_strip;
         state.led_count = led_count;
-        state.brightness = 32; // Start with low brightness (0-255)
+        state.brightness = 255; // Start with low brightness (0-255)
         
         // Clear all LEDs
         for (int i = 0; i < led_count; i++) {
