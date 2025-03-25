@@ -188,6 +188,13 @@ extern "C" void app_main()
     endpoint_t *endpoint = extended_color_light::create(node, &light_config, ENDPOINT_FLAG_NONE, light_handle);
     ABORT_APP_ON_FAILURE(endpoint != nullptr, ESP_LOGE(TAG, "Failed to create extended color light endpoint"));
 
+    /* Enable HSL control */
+    cluster_t *cluster = cluster::get(endpoint, ColorControl::Id);
+    cluster::color_control::feature::hue_saturation::config_t hue_saturation_config;
+    hue_saturation_config.current_hue = DEFAULT_HUE;
+    hue_saturation_config.current_saturation = DEFAULT_SATURATION;
+    cluster::color_control::feature::hue_saturation::add(cluster, &hue_saturation_config);
+
     light_endpoint_id = endpoint::get_id(endpoint);
     ESP_LOGI(TAG, "Light created with endpoint_id %d", light_endpoint_id);
 
