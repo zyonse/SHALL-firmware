@@ -258,9 +258,4 @@ extern "C" void app_main()
     esp_matter::console::init();
 #endif
 
-    // Start the LED strip demo on GPIO 10 with 30 LEDs
-    err = start_led_strip_demo(36, 150);
-    if (err != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to start LED strip demo");
-    }
 }

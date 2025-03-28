@@ -19,6 +19,10 @@
 #define MATTER_SATURATION 254
 #define MATTER_TEMPERATURE_FACTOR 1000000
 
+// Add conversion macros for both directions
+#define REMAP_TO_RANGE(value, in_max, out_max) ((value) * (out_max) / (in_max))
+#define REMAP_TO_RANGE_INVERSE(value, factor) ((factor) / (value))
+
 /** Default attribute values used during initialization */
 #define DEFAULT_POWER true
 #define DEFAULT_BRIGHTNESS 64
