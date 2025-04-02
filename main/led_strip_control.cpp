@@ -22,35 +22,76 @@ static bool adaptive_mode = false; // Flag for adaptive mode
 // Convert color temperature to RGB
 static void temp2rgb(uint32_t temp_k, uint8_t *r, uint8_t *g, uint8_t *b)
 {
-    // Simple approximation: warmer (lower K) = more red, cooler (higher K) = more blue
-    float temp = temp_k / 100.0f;
+    // Override for common Matter values (direct mapping approach)
+    // Matter uses mireds, where 153 = 6500K (cool) and 370 = 2700K (warm)
+    // Instead of complex math, we'll use a direct mapping for key values
     
-    if (temp <= 66) {
-        *r = 255;
-        float g_val = 99.4708025861f * std::log(temp) - 161.1195681661f;
-        *g = g_val < 0 ? 0 : (g_val > 255 ? 255 : static_cast<uint8_t>(g_val));
-        
-        if (temp <= 19) {
-            *b = 0;
-        } else {
-            float b_val = 138.5177312231f * std::log(temp - 10) - 305.0447927307f;
-            *b = b_val < 0 ? 0 : (b_val > 255 ? 255 : static_cast<uint8_t>(b_val));
-        }
-    } else {
-        float r_val = 329.698727446f * std::pow(temp - 60, -0.1332047592f);
-        *r = r_val < 0 ? 0 : (r_val > 255 ? 255 : static_cast<uint8_t>(r_val));
-        
-        float g_val = 288.1221695283f * std::pow(temp - 60, -0.0755148492f);
-        *g = g_val < 0 ? 0 : (g_val > 255 ? 255 : static_cast<uint8_t>(g_val));
-        
-        *b = 255;
+    uint8_t brightness_factor = current_brightness;
+    float brightness_scale = brightness_factor / 255.0f;
+    
+    // Specific preset colors for common temperatures
+    if (temp_k >= 6500) { // 153 mireds or less - Cool white
+        *r = 255 * brightness_scale;
+        *g = 255 * brightness_scale;
+        *b = 255 * brightness_scale;
+        ESP_LOGI(TAG, "Using cool white preset (6500K+)");
+    } 
+    else if (temp_k >= 5000) { // ~200 mireds - Daylight
+        *r = 255 * brightness_scale;
+        *g = 240 * brightness_scale;
+        *b = 230 * brightness_scale;
+        ESP_LOGI(TAG, "Using daylight preset (5000-6500K)");
     }
+    else if (temp_k >= 4000) { // ~250 mireds - Neutral
+        *r = 255 * brightness_scale;
+        *g = 225 * brightness_scale;
+        *b = 200 * brightness_scale;
+        ESP_LOGI(TAG, "Using neutral preset (4000-5000K)");
+    }
+    else if (temp_k >= 3000) { // ~333 mireds - Warm white
+        *r = 255 * brightness_scale;
+        *g = 180 * brightness_scale;
+        *b = 130 * brightness_scale;
+        ESP_LOGI(TAG, "Using warm white preset (3000-4000K)");
+    }
+    else if (temp_k >= 2700) { // ~370 mireds - Incandescent
+        *r = 255 * brightness_scale;
+        *g = 160 * brightness_scale;
+        *b = 80 * brightness_scale; 
+        ESP_LOGI(TAG, "Using incandescent preset (2700-3000K)");
+    }
+    else { // < 2700K (>370 mireds) - Very warm
+        *r = 255 * brightness_scale;
+        *g = 140 * brightness_scale;
+        *b = 40 * brightness_scale;
+        ESP_LOGI(TAG, "Using very warm preset (<2700K)");
+    }
+    
+    ESP_LOGI(TAG, "Temperature %luK -> RGB: (%u,%u,%u) with brightness %u", 
+             (unsigned long)temp_k, *r, *g, *b, brightness_factor);
 }
 
 // Convert mired to Kelvin
 static uint32_t mired_to_kelvin(uint32_t mired)
 {
-    return 1000000 / mired;
+    // Mired is 1,000,000/kelvin
+    // To convert: kelvin = 1,000,000/mired
+    
+    // Handle special case for very large values to avoid division by zero
+    if (mired < 1) {
+        return 6500; // Default to daylight
+    }
+    
+    // Do the conversion
+    uint32_t kelvin = 1000000 / mired;
+    
+    // Constrain to reasonable values
+    if (kelvin < 1000) kelvin = 1000;
+    if (kelvin > 10000) kelvin = 10000;
+    
+    ESP_LOGI(TAG, "Converting %lu mireds to %lu K", (unsigned long)mired, (unsigned long)kelvin);
+    
+    return kelvin;
 }
 
 // Update the LED strip based on current settings
@@ -60,6 +101,9 @@ static esp_err_t update_led_strip()
         ESP_LOGE(TAG, "LED strip not initialized");
         return ESP_ERR_INVALID_STATE;
     }
+
+    ESP_LOGI(TAG, "Updating LED strip - power:%d, adaptive:%d, temperature_mode:%d, brightness:%d", 
+            power_on, adaptive_mode, use_temperature_mode, current_brightness);
 
     if (!power_on) {
         // Turn off all LEDs
@@ -72,18 +116,23 @@ static esp_err_t update_led_strip()
         if (use_temperature_mode) {
             uint8_t r, g, b;
             temp2rgb(current_temperature, &r, &g, &b);
+            ESP_LOGI(TAG, "Setting all LEDs to temperature color: RGB(%d,%d,%d)", r, g, b);
             for (int i = 0; i < strip_led_count; i++) {
                 led_strip_set_pixel(led_strip, i, r, g, b);
             }
         } else {
-            // Use led_strip_set_pixel_hsv instead of manual conversion
+            // Use led_strip_set_pixel_hsv for color mode
+            ESP_LOGI(TAG, "Setting all LEDs to HSV: (%d,%d,%d)", 
+                    current_hue, current_saturation, current_brightness);
             for (int i = 0; i < strip_led_count; i++) {
+                // Let the library handle HSV conversion
                 led_strip_set_pixel_hsv(led_strip, i, current_hue, current_saturation, current_brightness);
             }
         }
     }
     
     // Refresh the strip
+    ESP_LOGI(TAG, "Refreshing LED strip display");
     return led_strip_refresh(led_strip);
 }
 
@@ -151,8 +200,9 @@ esp_err_t led_strip_set_brightness(uint8_t brightness)
         return ESP_ERR_INVALID_STATE;
     }
     
+    ESP_LOGI(TAG, "Setting brightness: %d (previous: %d)", brightness, current_brightness);
     current_brightness = brightness;
-    ESP_LOGI(TAG, "Setting LED strip brightness: %d", brightness);
+    
     return update_led_strip();
 }
 
@@ -189,11 +239,15 @@ esp_err_t led_strip_set_temperature(uint32_t temperature_mireds)
         return ESP_ERR_INVALID_STATE;
     }
     
+    ESP_LOGI(TAG, "Setting temperature: %lu mireds", (unsigned long)temperature_mireds);
+    
     // Convert mireds to kelvin
     current_temperature = mired_to_kelvin(temperature_mireds);
+    
+    // Enable temperature mode
     use_temperature_mode = true;
-    ESP_LOGI(TAG, "Setting LED strip temperature: %lu mireds (%lu K)", 
-             (unsigned long)temperature_mireds, (unsigned long)current_temperature);
+    
+    // Apply the change
     return update_led_strip();
 }
 
@@ -271,9 +325,12 @@ uint32_t led_strip_get_temperature(void)
 {
     // Convert from kelvin back to mireds
     if (current_temperature == 0) {
-        return 0; // Avoid division by zero
+        return 153; // Default to 6500K in mireds
     }
-    return 1000000 / current_temperature;
+    uint32_t mireds = 1000000 / current_temperature;
+    ESP_LOGD(TAG, "Converting %lu K to %lu mireds", 
+             (unsigned long)current_temperature, (unsigned long)mireds);
+    return mireds;
 }
 
 uint16_t led_strip_get_led_count(void)

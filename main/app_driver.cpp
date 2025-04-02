@@ -29,8 +29,9 @@ static esp_err_t app_driver_light_set_power(void *handle, esp_matter_attr_val_t 
 
 static esp_err_t app_driver_light_set_brightness(void *handle, esp_matter_attr_val_t *val)
 {
-    int value = REMAP_TO_RANGE(val->val.u8, MATTER_BRIGHTNESS, STANDARD_BRIGHTNESS);
-    ESP_LOGI(TAG, "LED set brightness: %d", value);
+    // Map Matter brightness (0-254) to standard brightness (0-255)
+    int value = (val->val.u8 == 0) ? 0 : ((val->val.u8 * 255) / 254);
+    ESP_LOGI(TAG, "LED set brightness: %d (Matter value: %d)", value, val->val.u8);
     return led_strip_set_brightness(value);
 }
 
@@ -50,9 +51,10 @@ static esp_err_t app_driver_light_set_saturation(void *handle, esp_matter_attr_v
 
 static esp_err_t app_driver_light_set_temperature(void *handle, esp_matter_attr_val_t *val)
 {
-    uint32_t value = REMAP_TO_RANGE_INVERSE(val->val.u16, STANDARD_TEMPERATURE_FACTOR);
-    ESP_LOGI(TAG, "LED set temperature: %ld", value);
-    return led_strip_set_temperature(value);
+    // Matter sends temperature directly in mireds - no conversion needed
+    uint32_t mireds = val->val.u16;
+    ESP_LOGI(TAG, "LED set temperature: %lu", (unsigned long)mireds);
+    return led_strip_set_temperature(mireds);
 }
 
 static void app_driver_button_toggle_cb(void *arg, void *data)
