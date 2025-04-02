@@ -18,33 +18,6 @@ static uint8_t current_saturation = 255;
 static bool use_temperature_mode = false;
 static uint32_t current_temperature = 4000; // default is warm white (in kelvin)
 
-// Convert HSV to RGB
-static void hsv2rgb(uint16_t h, uint8_t s, uint8_t v, uint8_t *r, uint8_t *g, uint8_t *b)
-{
-    uint8_t region, remainder, p, q, t;
-
-    if (s == 0) {
-        *r = *g = *b = v;
-        return;
-    }
-
-    region = h / 43;
-    remainder = (h - (region * 43)) * 6;
-
-    p = (v * (255 - s)) >> 8;
-    q = (v * (255 - ((s * remainder) >> 8))) >> 8;
-    t = (v * (255 - ((s * (255 - remainder)) >> 8))) >> 8;
-
-    switch (region) {
-        case 0:  *r = v; *g = t; *b = p; break;
-        case 1:  *r = q; *g = v; *b = p; break;
-        case 2:  *r = p; *g = v; *b = t; break;
-        case 3:  *r = p; *g = q; *b = v; break;
-        case 4:  *r = t; *g = p; *b = v; break;
-        default: *r = v; *g = p; *b = q; break;
-    }
-}
-
 // Convert color temperature to RGB
 static void temp2rgb(uint32_t temp_k, uint8_t *r, uint8_t *g, uint8_t *b)
 {
@@ -93,22 +66,17 @@ static esp_err_t update_led_strip()
             led_strip_set_pixel(led_strip, i, 0, 0, 0);
         }
     } else {
-        uint8_t r, g, b;
-        
         if (use_temperature_mode) {
+            uint8_t r, g, b;
             temp2rgb(current_temperature, &r, &g, &b);
+            for (int i = 0; i < strip_led_count; i++) {
+                led_strip_set_pixel(led_strip, i, r, g, b);
+            }
         } else {
-            hsv2rgb(current_hue, current_saturation, 255, &r, &g, &b);
-        }
-        
-        // Apply brightness
-        r = (r * current_brightness) / 255;
-        g = (g * current_brightness) / 255;
-        b = (b * current_brightness) / 255;
-        
-        // Set all LEDs to the same color
-        for (int i = 0; i < strip_led_count; i++) {
-            led_strip_set_pixel(led_strip, i, r, g, b);
+            // Use led_strip_set_pixel_hsv instead of manual conversion
+            for (int i = 0; i < strip_led_count; i++) {
+                led_strip_set_pixel_hsv(led_strip, i, current_hue, current_saturation, current_brightness);
+            }
         }
     }
     
