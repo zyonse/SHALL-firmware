@@ -93,6 +93,46 @@ esp_err_t led_strip_set_temperature(uint32_t temperature);
  */
 uint32_t led_strip_get_temperature(void);
 
+/**
+ * @brief Enable or disable adaptive mode (for FFT-based color control)
+ * 
+ * @param enable true to enable adaptive mode, false to disable
+ * @return esp_err_t ESP_OK on success
+ */
+esp_err_t led_strip_set_adaptive_mode(bool enable);
+
+/**
+ * @brief Get current adaptive mode state
+ * 
+ * @return true if adaptive mode is enabled, false otherwise
+ */
+bool led_strip_get_adaptive_mode(void);
+
+/**
+ * @brief Set the color of an individual pixel (for use by FFT algorithm)
+ * 
+ * @param pixel_index Index of the pixel to set
+ * @param red Red component (0-255)
+ * @param green Green component (0-255)
+ * @param blue Blue component (0-255)
+ * @return esp_err_t ESP_OK on success
+ */
+esp_err_t led_strip_set_pixel_color(uint16_t pixel_index, uint8_t red, uint8_t green, uint8_t blue);
+
+/**
+ * @brief Refresh the LED strip to display set colors
+ * 
+ * @return esp_err_t ESP_OK on success
+ */
+esp_err_t led_strip_update(void);
+
+/**
+ * @brief Get the number of LEDs in the strip
+ * 
+ * @return uint16_t Number of LEDs
+ */
+uint16_t led_strip_get_led_count(void);
+
 #ifdef __cplusplus
 }
 #endif
