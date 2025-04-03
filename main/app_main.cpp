@@ -1,6 +1,7 @@
 #include <esp_err.h>
 #include <esp_log.h>
 #include <nvs_flash.h>
+#include <esp_wifi.h>
 
 #include <esp_matter.h>
 #include <esp_matter_console.h>
@@ -156,6 +157,21 @@ static esp_err_t app_attribute_update_cb(attribute::callback_type_t type, uint16
     return err;
 }
 
+// Function to print WiFi MAC address
+static void print_wifi_mac(void)
+{
+    uint8_t mac[6];
+    esp_err_t err = esp_wifi_get_mac(WIFI_IF_STA, mac);
+    if (err == ESP_OK) {
+        ESP_LOGI(TAG, "WiFi MAC Address: %02X:%02X:%02X:%02X:%02X:%02X",
+                 mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+        ESP_LOGI(TAG, "mDNS Address: %02X%02X%02X%02X%02X%02X.local",
+                 mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+    } else {
+        ESP_LOGE(TAG, "Failed to get WiFi MAC address: %s", esp_err_to_name(err));
+    }
+}
+
 extern "C" void app_main()
 {
     esp_err_t err = ESP_OK;
@@ -240,6 +256,9 @@ extern "C" void app_main()
     /* Matter start */
     err = esp_matter::start(app_event_cb);
     ABORT_APP_ON_FAILURE(err == ESP_OK, ESP_LOGE(TAG, "Failed to start Matter, err:%d", err));
+
+    /* Print WiFi MAC address */
+    print_wifi_mac();
 
     /* Starting driver with default values */
     app_driver_light_set_defaults(light_endpoint_id);
