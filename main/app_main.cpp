@@ -28,6 +28,7 @@ using namespace chip::DeviceLayer;
 #endif
 
 #include "led_strip_control.h"
+#include "web_server.h"
 
 static const char *TAG = "app_main";
 uint16_t light_endpoint_id = 0;
@@ -258,4 +259,8 @@ extern "C" void app_main()
     esp_matter::console::init();
 #endif
 
+    // Initialize and start the web server after Matter is configured
+    web_server_init();
+    web_server_start();
+    ESP_LOGI(TAG, "Web server initialized and started");
 }
