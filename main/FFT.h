@@ -1,5 +1,5 @@
-#ifndef FFT_AUDIO_H
-#define FFT_AUDIO_H
+#ifndef FFT_H
+#define FFT_H
 
 #include <stdbool.h>
 
@@ -19,4 +19,4 @@ void fft_control_lights(void);
 }
 #endif
 
-#endif // FFT_AUDIO_H
+#endif // FFT_H
