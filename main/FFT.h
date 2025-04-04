@@ -13,7 +13,7 @@ extern "C" {
 #endif
 
 bool initialize_fft(void);
-void run_fft_cycle(void);
+void fft_control_lights(void);
 
 #ifdef __cplusplus
 }

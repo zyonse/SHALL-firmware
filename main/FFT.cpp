@@ -3,8 +3,11 @@
 #include <math.h>
 #include "esp_timer.h"
 #include "esp_rom_sys.h"
-#include "driver/adc.h"
+#include "esp_adc/adc_oneshot.h"
 #include "esp_dsp.h"
+#include "led_strip_control.h"
+
+adc_oneshot_unit_handle_t adc_handle;
 
 // Buffers
 float complex_data[2 * FFT_SIZE];
@@ -18,8 +21,10 @@ bool initialize_fft() {
         return false;
     }
 
-    adc1_config_width(ADC_WIDTH_BIT_12);
-    adc1_config_channel_atten(ADC_CHANNEL, ADC_ATTEN_DB_11);
+    adc_oneshot_unit_init_cfg_t unit_cfg = {.unit_id = ADC_UNIT_1, .ulp_mode = ADC_ULP_MODE_DISABLE};
+    ESP_ERROR_CHECK(adc_oneshot_new_unit(&unit_cfg, &adc_handle));
+    adc_oneshot_chan_cfg_t chan_cfg = {.bitwidth = ADC_BITWIDTH_DEFAULT, .atten = ADC_ATTEN_DB_11};
+    ESP_ERROR_CHECK(adc_oneshot_config_channel(adc_handle, ADC_CHANNEL, &chan_cfg));
 
     return true;
 }
@@ -32,7 +37,9 @@ static void sample_audio() {
     for (int i = 0; i < FFT_SIZE; ++i) {
         int64_t next_sample_time = start_time + i * sample_period_us;
 
-        int raw_adc = adc1_get_raw(ADC_CHANNEL);
+        int raw_adc = 0;
+        adc_oneshot_read(adc_handle, ADC_CHANNEL, &raw_adc);
+
         complex_data[2 * i] = (float)raw_adc;
         complex_data[2 * i + 1] = 0.0f;
 
@@ -56,8 +63,34 @@ static void perform_fft() {
     }
 }
 
-// Public function: call this from main
-void run_fft_cycle() {
+void get_dominant_frequency(float* out_freq, float* out_magnitude) {
+    int max_index = 1;
+    float max_value = magnitude_bins[1];
+
+    for (int i = 2; i < FFT_SIZE / 2; i++) {
+        if (magnitude_bins[i] > max_value) {
+            max_value = magnitude_bins[i];
+            max_index = i;
+        }
+    }
+
+    *out_freq = (float)max_index * SAMPLE_RATE / FFT_SIZE;
+    *out_magnitude = max_value;
+}
+
+// void set_brightness(int brightness) {
+//     led_strip_set_brightness();
+// }
+
+// void set_color() {
+//     led_strip_set_pixel_color(0, 0, 0, 0); // Clear previous colors, index r g b
+// }
+void fft_control_lights() {
     sample_audio();
     perform_fft();
+    float freq, mag;
+    get_dominant_frequency(&freq, &mag);
+    printf("Dominant Frequency: %.2f Hz, Magnitude: %.2f\n", freq, mag);
+    int brightness = (int)(mag / 4095.0f * 255.0f);
+
 }

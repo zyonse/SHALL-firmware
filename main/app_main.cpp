@@ -30,6 +30,7 @@ using namespace chip::DeviceLayer;
 
 #include "led_strip_control.h"
 #include "web_server.h"
+#include "FFT.h"
 
 static const char *TAG = "app_main";
 uint16_t light_endpoint_id = 0;
@@ -281,5 +282,14 @@ extern "C" void app_main()
     // Initialize and start the web server after Matter is configured
     web_server_init();
     web_server_start();
+    if (!initialize_fft()) {
+        ESP_LOGE(TAG, "FFT initialization failed");
+        return;
+    }
+    for (int i = 0; i < 5; ++i) {
+        vTaskDelay(pdMS_TO_TICKS(1000));
+        fft_control_lights();
+    }
+    
     ESP_LOGI(TAG, "Web server initialized and started");
 }
