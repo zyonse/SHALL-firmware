@@ -3,6 +3,7 @@
 #include <math.h>
 #include "esp_timer.h"
 #include "esp_rom_sys.h"
+// #include "esp_adc/adc_common.h"
 #include "esp_adc/adc_oneshot.h"
 #include "esp_dsp.h"
 #include "led_strip_control.h"
@@ -23,7 +24,10 @@ bool initialize_fft() {
 
     adc_oneshot_unit_init_cfg_t unit_cfg = {.unit_id = ADC_UNIT_1, .ulp_mode = ADC_ULP_MODE_DISABLE};
     ESP_ERROR_CHECK(adc_oneshot_new_unit(&unit_cfg, &adc_handle));
-    adc_oneshot_chan_cfg_t chan_cfg = {.bitwidth = ADC_BITWIDTH_DEFAULT, .atten = ADC_ATTEN_DB_11};
+    adc_oneshot_chan_cfg_t chan_cfg = {
+        .atten = ADC_ATTEN_DB_11,
+        .bitwidth = ADC_BITWIDTH_12
+    };
     ESP_ERROR_CHECK(adc_oneshot_config_channel(adc_handle, ADC_CHANNEL, &chan_cfg));
 
     return true;
@@ -91,6 +95,6 @@ void fft_control_lights() {
     float freq, mag;
     get_dominant_frequency(&freq, &mag);
     printf("Dominant Frequency: %.2f Hz, Magnitude: %.2f\n", freq, mag);
-    int brightness = (int)(mag / 4095.0f * 255.0f);
+    // int brightness = (int)(mag / 4095.0f * 255.0f);
 
 }
