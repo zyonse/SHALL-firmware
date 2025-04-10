@@ -3,7 +3,6 @@
 #include <math.h>
 #include "esp_timer.h"
 #include "esp_rom_sys.h"
-// #include "esp_adc/adc_common.h"
 #include "esp_adc/adc_oneshot.h"
 #include "esp_dsp.h"
 #include "led_strip_control.h"
@@ -95,7 +94,7 @@ void get_dominant_frequency(float* out_freq, float* out_magnitude) {
 void fft_control_lights() {
     sample_audio();
     perform_fft();
-
+    printf("FFT performed");
     float freq, mag;
     get_dominant_frequency(&freq, &mag);
     printf("Dominant Frequency: %.2f Hz, Magnitude: %.2f\n", freq, mag);

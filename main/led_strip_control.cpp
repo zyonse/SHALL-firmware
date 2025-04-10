@@ -17,7 +17,7 @@ static uint16_t current_hue = 0;
 static uint8_t current_saturation = 255;
 static bool use_temperature_mode = false;
 static uint32_t current_temperature = 4000; // default is warm white (in kelvin)
-static bool adaptive_mode = false; // Flag for adaptive mode
+static bool adaptive_mode = true; // Flag for adaptive mode
 
 // Convert color temperature to RGB
 static void temp2rgb(uint32_t temp_k, uint8_t *r, uint8_t *g, uint8_t *b)
@@ -175,7 +175,6 @@ esp_err_t led_strip_init(uint32_t gpio_num, uint16_t led_count)
     current_hue = 128;
     current_saturation = 254;
     use_temperature_mode = false;
-    adaptive_mode = false;
     
     // Update the strip with initial values
     return update_led_strip();
