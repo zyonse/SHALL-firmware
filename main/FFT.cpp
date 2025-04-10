@@ -94,7 +94,7 @@ void get_dominant_frequency(float* out_freq, float* out_magnitude) {
 void fft_control_lights() {
     sample_audio();
     perform_fft();
-    printf("FFT performed");
+
     float freq, mag;
     get_dominant_frequency(&freq, &mag);
     printf("Dominant Frequency: %.2f Hz, Magnitude: %.2f\n", freq, mag);
