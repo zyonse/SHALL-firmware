@@ -38,16 +38,12 @@ esp_lcd_panel_io_handle_t io_handle;
 //-----------------------------------------------------------------------
 
 //--- WIFI LIBRARIES, SSID & PASSWORDS
-#include "esp_wifi.h"
 #include "esp_event.h"
 #include "nvs_flash.h"
 
 
 #include <time.h> // time and ntp library
 #include "esp_sntp.h"
-
-#define WIFI_SSID      "redacted"
-#define WIFI_PASSWORD  "redacted"
 
 // Global variables for UI updates //
 lv_obj_t* wifi_status_label = NULL;
@@ -72,7 +68,6 @@ static void wifi_event_handler(void* arg, esp_event_base_t event_base,
     int32_t event_id, void* event_data);
 void sync_time_with_ntp(void);
 void update_time_label(lv_task_t *task);
-void init_wifi(void);
 void init_display(void);
 //-----------------------------------------------------------------------
 
@@ -125,95 +120,6 @@ void sync_time_with_ntp(){
         vTaskDelay(pdMS_TO_TICKS(1000));  // wait 1 seconds
         retry++;
     }
-}
-
-/**
- * @brief Initializes NVS, TCP/IP stack, and WiFi in station mode.
- * Function initializes the NVS, TCP/IP stack and event loop,
- * configures WiFi (including event handler registration), and starts WiFi in STA mode.
- */
-void init_wifi(void){
-    // Initialize NVS
-    esp_err_t ret_nvs = nvs_flash_init();
-    if (ret_nvs == ESP_ERR_NVS_NO_FREE_PAGES || ret_nvs == ESP_ERR_NVS_NEW_VERSION_FOUND) {
-        ESP_ERROR_CHECK(nvs_flash_erase());
-        ret_nvs = nvs_flash_init();
-    }
-    ESP_ERROR_CHECK(ret_nvs);
-
-    // TCP/IP + Wi-Fi
-    ESP_ERROR_CHECK(esp_netif_init());
-    ESP_ERROR_CHECK(esp_event_loop_create_default());
-    esp_netif_create_default_wifi_sta();
-
-    wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
-    ESP_ERROR_CHECK(esp_wifi_init(&cfg));
-    ESP_ERROR_CHECK(esp_event_handler_register(WIFI_EVENT, ESP_EVENT_ANY_ID, &wifi_event_handler, NULL));
-    ESP_ERROR_CHECK(esp_event_handler_register(IP_EVENT, IP_EVENT_STA_GOT_IP, &wifi_event_handler, NULL));
-
-    wifi_config_t wifi_config = {};
-    strncpy((char*)wifi_config.sta.ssid, WIFI_SSID, sizeof(wifi_config.sta.ssid));
-    strncpy((char*)wifi_config.sta.password, WIFI_PASSWORD, sizeof(wifi_config.sta.password));
-    wifi_config.sta.threshold.authmode = WIFI_AUTH_WPA2_PSK;
-    wifi_config.sta.pmf_cfg.capable = true;
-    wifi_config.sta.pmf_cfg.required = false;
-    ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
-    ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &wifi_config));
-
-    // create time label (initially placeholder)
-    // time_label = lv_label_create(lv_scr_act(), NULL);
-    // lv_label_set_text(time_label, "Time: --:--:--");
-    // lv_obj_set_style_local_text_color(time_label, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, LV_COLOR_WHITE);
-    // lv_obj_set_style_local_text_font(time_label, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, &lv_font_montserrat_22);
-    //lv_obj_align(time_label, NULL, LV_ALIGN_CENTER, 0, 0);
-
-    // create wifi status label on screen
-    // wifi_status_label = lv_label_create(lv_scr_act(), NULL);
-    // lv_label_set_text(wifi_status_label, "Connecting to Wi-Fi...");
-    // lv_obj_align(wifi_status_label, NULL, LV_ALIGN_IN_TOP_MID, 0, 10);
-
-    // START WIFI
-    ESP_ERROR_CHECK(esp_wifi_start());
-}
-
-/**
- * @brief WiFi and IP event handler.
- *
- * This function processes WiFi-related events:
- * - Start: WIFI_EVENT_STA_START -> initiates connection & updates status label.
- * - Disconnects: WIFI_EVENT_STA_DISCONNECTED -> attempts to reconnect and updates the label accordingly.
- * - Got IP address: IP_EVENT_STA_GOT_IP -> logs the IP, updates the status label, stores the global WiFi status, 
- *   and triggers SNTP synchronization.
- *
- * @param arg User-defined argument (unused).
- * @param event_base The event base, e.g., WIFI_EVENT or IP_EVENT.
- * @param event_id The specific event identifier.
- * @param event_data Pointer to event-specific data.
- * 
- * @note Function is adapted from https://docs.espressif.com/projects/esp-idf/en/stable/esp32/api-reference/system/system_time.html
- */
-static void wifi_event_handler(void* arg, esp_event_base_t event_base, int32_t event_id, void* event_data) {
-    (void) arg;
-
-    if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_START) {
-        esp_wifi_connect();
-    } 
-
-    else if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_DISCONNECTED) {
-        ESP_LOGI("WiFi", "Disconnected! Reconnecting...");
-        esp_wifi_connect();
-    } 
-
-    else if (event_base == IP_EVENT && event_id == IP_EVENT_STA_GOT_IP) {
-        ip_event_got_ip_t* event = (ip_event_got_ip_t*) event_data;
-        ESP_LOGI("WiFi", "Connected! Got IP: " IPSTR, IP2STR(&event->ip_info.ip));
-        // Update WiFi status globals
-        snprintf(global_wifi_status, sizeof(global_wifi_status), "Connected!\nIP: " IPSTR, IP2STR(&event->ip_info.ip));
-        wifi_status_updated = true;
-        // Synchronize time via SNTP (this is blocking; consider moving to a separate task if needed)
-        esp_log_level_set("sntp", ESP_LOG_DEBUG);
-        sync_time_with_ntp();
-    }    
 }
 
 /**
@@ -383,7 +289,6 @@ extern "C" void app_main() {
 
     // Initialize display and WiFi
     init_display();
-    init_wifi();     
 
     // Create a new screen and load it so that it becomes active
     lv_obj_t *screen = lv_obj_create(NULL, NULL);
