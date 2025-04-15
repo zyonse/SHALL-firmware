@@ -101,7 +101,7 @@ static uint32_t mired_to_kelvin(uint32_t mired)
 }
 
 // Update the LED strip based on current settings
-static esp_err_t update_led_strip()
+esp_err_t update_led_strip()
 {
     if (!led_strip) {
         ESP_LOGE(TAG, "LED strip not initialized");
@@ -311,7 +311,10 @@ esp_err_t led_strip_set_mode(led_strip_mode_t mode)
     // When switching mode, update the strip immediately to reflect the new mode's state
     // (unless switching TO adaptive, which is handled by its task)
     if (current_mode != MODE_ADAPTIVE) {
-        return update_led_strip();
+        ESP_LOGI(TAG, "Triggering immediate update for mode switch (not to ADAPTIVE)");
+        return update_led_strip(); // Update immediately for Manual and Environmental
+    } else {
+        ESP_LOGI(TAG, "Skipping immediate update for mode switch (to ADAPTIVE)");
     }
 
     return ESP_OK;
@@ -405,54 +408,44 @@ esp_err_t led_strip_update(void)
 }
 
 // --- Environmental Mode Logic ---
+// This function now ONLY updates the target environmental RGB values based on weather.
+// It does NOT apply them to the strip directly.
 esp_err_t led_strip_update_environmental_state(double temperature, int condition_id, const char* condition_desc) {
-    ESP_LOGI(TAG, "Updating environmental state: Temp=%.1f, CondID=%d, Desc=%s", temperature, condition_id, condition_desc);
+    ESP_LOGI(TAG, "Updating target environmental state: Temp=%.1f, CondID=%d, Desc=%s", temperature, condition_id, condition_desc);
 
     // Simple example logic based on condition description or ID
-    // (Expand this logic significantly based on desired effects)
+    uint8_t r, g, b; // Temporary variables
     if (strstr(condition_desc, "Clear") != NULL || condition_id == 800) {
         // Sunny/Clear - Yellow/Orange
-        environmental_r = 255;
-        environmental_g = 180;
-        environmental_b = 0;
-        ESP_LOGI(TAG, "Environmental color: Sunny/Clear");
+        r = 255; g = 180; b = 0;
+        ESP_LOGI(TAG, "Target environmental color: Sunny/Clear");
     } else if (strstr(condition_desc, "Clouds") != NULL || (condition_id >= 801 && condition_id <= 804)) {
         // Cloudy - White/Grey
-        environmental_r = 200;
-        environmental_g = 200;
-        environmental_b = 200;
-        ESP_LOGI(TAG, "Environmental color: Cloudy");
+        r = 200; g = 200; b = 200;
+        ESP_LOGI(TAG, "Target environmental color: Cloudy");
     } else if (strstr(condition_desc, "Rain") != NULL || strstr(condition_desc, "Drizzle") != NULL || (condition_id >= 300 && condition_id <= 531)) {
         // Rainy - Blue
-        environmental_r = 0;
-        environmental_g = 80;
-        environmental_b = 255;
-        ESP_LOGI(TAG, "Environmental color: Rainy");
+        r = 0; g = 80; b = 255;
+        ESP_LOGI(TAG, "Target environmental color: Rainy");
     } else if (strstr(condition_desc, "Snow") != NULL || (condition_id >= 600 && condition_id <= 622)) {
         // Snowy - Cool White
-        environmental_r = 220;
-        environmental_g = 220;
-        environmental_b = 255;
-        ESP_LOGI(TAG, "Environmental color: Snowy");
+        r = 220; g = 220; b = 255;
+        ESP_LOGI(TAG, "Target environmental color: Snowy");
     } else if (strstr(condition_desc, "Thunderstorm") != NULL || (condition_id >= 200 && condition_id <= 232)) {
         // Thunderstorm - Purple/Flashing (Flashing not implemented here, just color)
-        environmental_r = 128;
-        environmental_g = 0;
-        environmental_b = 255;
-        ESP_LOGI(TAG, "Environmental color: Thunderstorm");
+        r = 128; g = 0; b = 255;
+        ESP_LOGI(TAG, "Target environmental color: Thunderstorm");
     } else {
         // Default/Unknown - Neutral White
-        environmental_r = 220;
-        environmental_g = 210;
-        environmental_b = 200;
-        ESP_LOGI(TAG, "Environmental color: Default/Unknown");
+        r = 220; g = 210; b = 200;
+        ESP_LOGI(TAG, "Target environmental color: Default/Unknown");
     }
 
-    // If currently in environmental mode, trigger an update to apply the new colors
-    if (current_mode == MODE_ENVIRONMENTAL) {
-        ESP_LOGI(TAG, "Triggering strip update for new environmental state");
-        return update_led_strip();
-    }
+    // Update the static variables holding the target color
+    environmental_r = r;
+    environmental_g = g;
+    environmental_b = b;
+    ESP_LOGI(TAG, "Stored environmental target RGB: (%d, %d, %d)", environmental_r, environmental_g, environmental_b);
 
     return ESP_OK;
 }

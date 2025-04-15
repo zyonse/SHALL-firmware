@@ -154,6 +154,16 @@ esp_err_t led_strip_update(void);
  */
 uint16_t led_strip_get_led_count(void);
 
+/**
+ * @brief Update the LED strip display based on the current mode and settings.
+ *
+ * This function reads the current mode, power, brightness, and color settings
+ * (including the target environmental color) and applies them to the physical LED strip.
+ *
+ * @return esp_err_t ESP_OK on success.
+ */
+esp_err_t update_led_strip(void);
+
 #ifdef __cplusplus
 }
 #endif

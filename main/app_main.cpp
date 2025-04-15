@@ -2,6 +2,8 @@
 #include <esp_log.h>
 #include <nvs_flash.h>
 #include <esp_wifi.h>
+#include "freertos/FreeRTOS.h" // Added for vTaskDelay
+#include "freertos/task.h"     // Added for vTaskDelay
 
 #include <esp_matter.h>
 #include <esp_matter_console.h>
@@ -183,7 +185,15 @@ static void adaptive_mode_task(void *pvParameters)
     while (1) {
         // If in adaptive mode and powered on, run the FFT control
         if (led_strip_get_mode() == MODE_ADAPTIVE && led_strip_get_power_state()) {
-            fft_control_lights(); // This function should handle setting pixels and calling led_strip_update()
+            // This function should set individual pixel colors via led_strip_set_pixel_color()
+            fft_control_lights();
+
+            // Explicitly call led_strip_update() AFTER fft_control_lights() sets the pixels.
+            // led_strip_update() will check the mode/power again and call led_strip_refresh().
+            esp_err_t update_err = led_strip_update();
+            if (update_err != ESP_OK) {
+                ESP_LOGE(TAG, "Adaptive task: Failed to update LED strip: %s", esp_err_to_name(update_err));
+            }
         }
 
         // Delay until next cycle
@@ -195,31 +205,45 @@ static void adaptive_mode_task(void *pvParameters)
 static void environmental_mode_task(void *pvParameters)
 {
     TickType_t last_wake_time = xTaskGetTickCount();
-    const TickType_t frequency = pdMS_TO_TICKS(15 * 60 * 1000); // Update every 15 minutes
+    // Fetch weather and update target color every 15 minutes
+    const TickType_t frequency = pdMS_TO_TICKS(15 * 60 * 1000);
 
     while (1) {
-        // Add diagnostic logging before the check
-        led_strip_mode_t current_mode = led_strip_get_mode();
-        bool power_state = led_strip_get_power_state();
-        ESP_LOGD(TAG, "Environmental task check: Current Mode=%d (Expected %d), Power State=%s",
-                 current_mode, MODE_ENVIRONMENTAL, power_state ? "ON" : "OFF");
-
-        if (current_mode == MODE_ENVIRONMENTAL && power_state) {
-            ESP_LOGI(TAG, "Environmental mode active - triggering weather fetch.");
-            esp_err_t weather_err = fetch_and_update_weather_state();
-            if (weather_err != ESP_OK) {
-                ESP_LOGE(TAG, "Failed to fetch or update weather state: %s", esp_err_to_name(weather_err));
-                // Optional: Implement retry logic or fallback behavior here
-            }
-        } else {
-             // If not in environmental mode or powered off, delay before next check
-             // Use a shorter delay if just checking status, longer if actually fetching
-             TickType_t delay_ticks = (current_mode == MODE_ENVIRONMENTAL && power_state) ? frequency : pdMS_TO_TICKS(5000);
-             vTaskDelayUntil(&last_wake_time, delay_ticks); // Use vTaskDelayUntil for consistent timing
-             continue; // Skip the main frequency delay at the end if we delayed here
+        ESP_LOGI(TAG, "Environmental task: Triggering weather fetch/cache update.");
+        esp_err_t weather_err = fetch_and_update_weather_state();
+        if (weather_err != ESP_OK) {
+            ESP_LOGE(TAG, "Failed to fetch or update weather state: %s", esp_err_to_name(weather_err));
+            // Continue anyway, will use previously cached data
         }
 
-        // Wait until the next update interval (only reached if weather fetch was attempted)
+        // Get the latest cached weather data (might be old if fetch failed)
+        double temp = weather_get_cached_temp();
+        int condition_id = weather_get_cached_condition_id();
+        const char* condition_desc = weather_get_cached_condition_desc();
+
+        ESP_LOGD(TAG, "Environmental task: Updating target environmental color based on cached state (Temp=%.1f, ID=%d, Desc=%s)",
+                 temp, condition_id, condition_desc);
+
+        // Update the target environmental RGB values stored in led_strip_control
+        esp_err_t update_target_err = led_strip_update_environmental_state(temp, condition_id, condition_desc);
+        if (update_target_err != ESP_OK) {
+             ESP_LOGE(TAG, "Failed to update target environmental state: %s", esp_err_to_name(update_target_err));
+             // Log error, but continue the loop
+        }
+
+        // If the strip is currently in environmental mode, apply the updated target color
+        if (led_strip_get_mode() == MODE_ENVIRONMENTAL) {
+            ESP_LOGI(TAG, "Environmental task: Mode is ENV, triggering strip update.");
+            // Call the main update function which will use the new environmental_r/g/b values
+            esp_err_t apply_err = update_led_strip();
+            if (apply_err != ESP_OK) {
+                ESP_LOGE(TAG, "Environmental task: Failed to apply updated state to strip: %s", esp_err_to_name(apply_err));
+            }
+        } else {
+            ESP_LOGD(TAG, "Environmental task: Mode is not ENV, skipping strip update.");
+        }
+
+        // Wait until the next 15-minute interval
         vTaskDelayUntil(&last_wake_time, frequency);
     }
 }
@@ -336,6 +360,27 @@ extern "C" void app_main()
 
     /* Initialize Weather Module */
     weather_init(); // Added here
+
+    // --- Initial Weather Fetch and Target Color Update ---
+    ESP_LOGI(TAG, "Waiting briefly before initial weather fetch...");
+    vTaskDelay(pdMS_TO_TICKS(10000)); // Wait 10 seconds for WiFi connection (adjust as needed)
+    ESP_LOGI(TAG, "Performing initial weather fetch...");
+    err = fetch_and_update_weather_state(); // Use the err declared at the start of app_main
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "Initial weather fetch failed: %s. Using default target color.", esp_err_to_name(err));
+        // Target color defaults to blueish, which is fine as a fallback
+    } else {
+        ESP_LOGI(TAG, "Initial weather fetch successful. Updating initial target environmental color.");
+        // Update the target environmental color based on the initial fetch
+        double temp = weather_get_cached_temp();
+        int condition_id = weather_get_cached_condition_id();
+        const char* condition_desc = weather_get_cached_condition_desc();
+        esp_err_t target_err = led_strip_update_environmental_state(temp, condition_id, condition_desc);
+        if (target_err != ESP_OK) {
+             ESP_LOGE(TAG, "Failed to set initial target environmental state: %s", esp_err_to_name(target_err));
+        }
+    }
+    // --- End Initial Weather Fetch ---
 
     if (!initialize_fft()) {
         ESP_LOGE(TAG, "FFT initialization failed");

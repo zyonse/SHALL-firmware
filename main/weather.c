@@ -1,5 +1,4 @@
 #include "weather.h"
-#include "led_strip_control.h" // To update the state
 #include "secrets.h"           // Include the secrets header
 
 #include <esp_log.h>
@@ -19,6 +18,7 @@ static const char *TAG = "weather";
 
 // Define buffer size locally (adjust if needed, should be generous enough for location)
 #define MAX_LOCATION_LEN 128
+#define MAX_DESC_LEN 32 // Max length for weather description cache
 
 // Buffer for HTTP response
 #define MAX_HTTP_RECV_BUFFER 1024
@@ -26,6 +26,12 @@ static char http_response_buffer[MAX_HTTP_RECV_BUFFER + 1] = {0};
 static int http_response_len = 0;
 static bool http_request_complete = false;
 static bool http_request_success = false;
+
+// --- Cached Weather Data ---
+static double cached_temp = -999.0; // Default invalid temp
+static int cached_condition_id = -1; // Default invalid ID
+static char cached_condition_desc[MAX_DESC_LEN] = "unknown"; // Default description
+// --- End Cached Weather Data ---
 
 // Forward declaration for url_encode
 static char *url_encode(const char *str, char *encoded_buf, size_t buf_len);
@@ -100,7 +106,7 @@ esp_err_t weather_init(void) {
 }
 
 esp_err_t fetch_and_update_weather_state(void) {
-    ESP_LOGI(TAG, "Attempting to fetch weather data");
+    ESP_LOGI(TAG, "Attempting to fetch weather data and update cache");
     esp_err_t final_err = ESP_FAIL; // Default to failure
 
     // Check if secrets seem valid (basic check)
@@ -178,7 +184,7 @@ esp_err_t fetch_and_update_weather_state(void) {
 
                 double temp = -999.0;
                 int condition_id = -1;
-                const char *condition_desc = "unknown";
+                const char *condition_desc_ptr = "unknown"; // Use a pointer for valuestring
 
                 if (cJSON_IsObject(main)) {
                     cJSON *temp_json = cJSON_GetObjectItem(main, "temp");
@@ -188,24 +194,26 @@ esp_err_t fetch_and_update_weather_state(void) {
                 }
                 if (cJSON_IsObject(weather)) {
                     cJSON *id_json = cJSON_GetObjectItem(weather, "id");
-                    cJSON *desc_json = cJSON_GetObjectItem(weather, "main");
+                    cJSON *desc_json = cJSON_GetObjectItem(weather, "main"); // Using "main" description field
                     if (cJSON_IsNumber(id_json)) {
                         condition_id = id_json->valueint;
                     }
-                    if (cJSON_IsString(desc_json)) {
-                        condition_desc = desc_json->valuestring;
+                    if (cJSON_IsString(desc_json) && desc_json->valuestring != NULL) {
+                        condition_desc_ptr = desc_json->valuestring;
                     }
                 }
-                ESP_LOGI(TAG, "Parsed Weather: Temp=%.1fC, CondID=%d, Desc=%s", temp, condition_id, condition_desc);
+                ESP_LOGI(TAG, "Parsed Weather: Temp=%.1fC, CondID=%d, Desc=%s", temp, condition_id, condition_desc_ptr);
 
-                // Update LED Strip State
-                err = led_strip_update_environmental_state(temp, condition_id, condition_desc);
-                if (err == ESP_OK) {
-                    final_err = ESP_OK; // Mark overall success
-                } else {
-                    ESP_LOGE(TAG, "Failed to update LED strip state after weather fetch.");
-                    final_err = err; // Propagate error from LED strip control
-                }
+                // --- Update Cache ---
+                cached_temp = temp;
+                cached_condition_id = condition_id;
+                strncpy(cached_condition_desc, condition_desc_ptr, MAX_DESC_LEN - 1);
+                cached_condition_desc[MAX_DESC_LEN - 1] = '\0'; // Ensure null termination
+                ESP_LOGI(TAG, "Weather cache updated.");
+                // --- End Update Cache ---
+
+                // Mark success if parsing worked
+                final_err = ESP_OK;
 
                 cJSON_Delete(root);
             }
@@ -221,6 +229,20 @@ esp_err_t fetch_and_update_weather_state(void) {
     esp_http_client_cleanup(client);
     return final_err;
 }
+
+// --- Getter functions for cached data ---
+double weather_get_cached_temp(void) {
+    return cached_temp;
+}
+
+int weather_get_cached_condition_id(void) {
+    return cached_condition_id;
+}
+
+const char* weather_get_cached_condition_desc(void) {
+    return cached_condition_desc;
+}
+// --- End Getter functions ---
 
 // Simple URL encoder (handles common problematic characters like space)
 // Note: This is a basic encoder, might need expansion for more complex cases.
