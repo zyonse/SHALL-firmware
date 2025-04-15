@@ -178,14 +178,48 @@ static void adaptive_mode_task(void *pvParameters)
 {
     TickType_t last_wake_time = xTaskGetTickCount();
     const TickType_t frequency = pdMS_TO_TICKS(500); // Adaptive mode sample frequency
-    
+
     while (1) {
-        // If in adaptive mode, run the FFT control
-        if (led_strip_get_adaptive_mode() && led_strip_get_power_state()) {
-            fft_control_lights();
+        // If in adaptive mode and powered on, run the FFT control
+        if (led_strip_get_mode() == MODE_ADAPTIVE && led_strip_get_power_state()) {
+            fft_control_lights(); // This function should handle setting pixels and calling led_strip_update()
         }
-        
-        // Sleep until next second
+
+        // Delay until next cycle
+        vTaskDelayUntil(&last_wake_time, frequency);
+    }
+}
+
+// Task to periodically update lighting based on environmental conditions (placeholder)
+static void environmental_mode_task(void *pvParameters)
+{
+    TickType_t last_wake_time = xTaskGetTickCount();
+    // Update less frequently than adaptive mode, e.g., every 5 minutes
+    const TickType_t frequency = pdMS_TO_TICKS(5 * 60 * 1000);
+
+    while (1) {
+        if (led_strip_get_mode() == MODE_ENVIRONMENTAL && led_strip_get_power_state()) {
+            ESP_LOGI(TAG, "Environmental mode active - fetching weather data (placeholder)");
+            // --- Placeholder for Weather API Call ---
+            // 1. Make HTTP request to weather API
+            // 2. Parse response (e.g., JSON)
+            // 3. Extract temperature, condition code/description, etc.
+            // --- End Placeholder ---
+
+            // --- Placeholder for Color Calculation ---
+            // Based on fetched weather data, calculate target color/pattern
+            // Example: Sunny -> Yellow/Orange, Cloudy -> White/Grey, Rainy -> Blue
+            ESP_LOGI(TAG, "Updating LEDs for environmental conditions (placeholder)");
+            // This logic might directly call led_strip_set_pixel and led_strip_update,
+            // or it could call a dedicated function in led_strip_control if preferred.
+            // For now, the update_led_strip function has basic placeholder logic.
+            // We might need to trigger an update explicitly if logic moves here.
+            // led_strip_update(); // Or call update_led_strip() if it handles env mode directly
+            // For simplicity, rely on the logic within update_led_strip triggered by set_mode or brightness changes.
+            // If weather changes need immediate effect without other changes, call update_led_strip() here.
+        }
+
+        // Wait until the next update interval
         vTaskDelayUntil(&last_wake_time, frequency);
     }
 }
@@ -307,6 +341,9 @@ extern "C" void app_main()
         xTaskCreate(adaptive_mode_task, "adaptive_mode_task", 4096, NULL, 5, NULL);
 
     }
+
+    // Create task for environmental mode processing
+    xTaskCreate(environmental_mode_task, "environmental_mode_task", 4096, NULL, 4, NULL); // Lower priority than adaptive
         
     ESP_LOGI(TAG, "Web server initialized and started");
 }

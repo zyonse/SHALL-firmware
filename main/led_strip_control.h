@@ -1,6 +1,8 @@
 #pragma once
 
 #include <esp_err.h>
+#include <stdbool.h> // Ensure bool is available
+#include <stdint.h>  // Ensure standard integer types are available
 
 #define LED_COUNT 150
 #define LED_BRIGHTNESS 255
@@ -8,6 +10,15 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+/**
+ * @brief Enum defining the control modes for the LED strip
+ */
+typedef enum {
+    MODE_MANUAL,        // Controlled by Matter/API (HSV, Temp)
+    MODE_ADAPTIVE,      // Controlled by FFT audio analysis
+    MODE_ENVIRONMENTAL  // Controlled by external conditions (e.g., weather) - Placeholder
+} led_strip_mode_t;
 
 /**
  * @brief Initialize the WS2812B LED strip
@@ -92,6 +103,21 @@ esp_err_t led_strip_set_temperature(uint32_t temperature);
  * @return Current color temperature in mireds
  */
 uint32_t led_strip_get_temperature(void);
+
+/**
+ * @brief Set the control mode of the LED strip
+ *
+ * @param mode The desired control mode (MANUAL, ADAPTIVE, ENVIRONMENTAL)
+ * @return esp_err_t ESP_OK on success
+ */
+esp_err_t led_strip_set_mode(led_strip_mode_t mode);
+
+/**
+ * @brief Get current control mode
+ *
+ * @return The current led_strip_mode_t
+ */
+led_strip_mode_t led_strip_get_mode(void);
 
 /**
  * @brief Enable or disable adaptive mode (for FFT-based color control)
