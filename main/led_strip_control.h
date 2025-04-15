@@ -1,6 +1,8 @@
 #pragma once
 
 #include <esp_err.h>
+#include <stdbool.h> // Ensure bool is available
+#include <stdint.h>  // Ensure standard integer types are available
 
 #define LED_COUNT 150
 #define LED_BRIGHTNESS 255
@@ -8,6 +10,15 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+/**
+ * @brief Enum defining the control modes for the LED strip
+ */
+typedef enum {
+    MODE_MANUAL,        // Controlled by Matter/API (HSV, Temp)
+    MODE_ADAPTIVE,      // Controlled by FFT audio analysis
+    MODE_ENVIRONMENTAL  // Controlled by external conditions (e.g., weather) - Placeholder
+} led_strip_mode_t;
 
 /**
  * @brief Initialize the WS2812B LED strip
@@ -94,19 +105,29 @@ esp_err_t led_strip_set_temperature(uint32_t temperature);
 uint32_t led_strip_get_temperature(void);
 
 /**
- * @brief Enable or disable adaptive mode (for FFT-based color control)
- * 
- * @param enable true to enable adaptive mode, false to disable
+ * @brief Set the control mode of the LED strip
+ *
+ * @param mode The desired control mode (MANUAL, ADAPTIVE, ENVIRONMENTAL)
  * @return esp_err_t ESP_OK on success
  */
-esp_err_t led_strip_set_adaptive_mode(bool enable);
+esp_err_t led_strip_set_mode(led_strip_mode_t mode);
 
 /**
- * @brief Get current adaptive mode state
- * 
- * @return true if adaptive mode is enabled, false otherwise
+ * @brief Get current control mode
+ *
+ * @return The current led_strip_mode_t
  */
-bool led_strip_get_adaptive_mode(void);
+led_strip_mode_t led_strip_get_mode(void);
+
+/**
+ * @brief Update the target state for environmental mode based on weather data
+ *
+ * @param temperature Current temperature (e.g., Celsius)
+ * @param condition_id Weather condition code (e.g., from OpenWeatherMap)
+ * @param condition_desc Weather condition description (e.g., "Clear", "Rain")
+ * @return esp_err_t ESP_OK on success
+ */
+esp_err_t led_strip_update_environmental_state(double temperature, int condition_id, const char* condition_desc);
 
 /**
  * @brief Set the color of an individual pixel (for use by FFT algorithm)
@@ -132,6 +153,16 @@ esp_err_t led_strip_update(void);
  * @return uint16_t Number of LEDs
  */
 uint16_t led_strip_get_led_count(void);
+
+/**
+ * @brief Update the LED strip display based on the current mode and settings.
+ *
+ * This function reads the current mode, power, brightness, and color settings
+ * (including the target environmental color) and applies them to the physical LED strip.
+ *
+ * @return esp_err_t ESP_OK on success.
+ */
+esp_err_t update_led_strip(void);
 
 #ifdef __cplusplus
 }

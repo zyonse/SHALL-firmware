@@ -5,6 +5,7 @@
 #include "driver/rmt_tx.h"
 #include "led_strip.h"
 #include <cmath>
+#include <string.h> // For strcmp
 
 static const char *TAG = "led_strip_control";
 
@@ -17,7 +18,12 @@ static uint16_t current_hue = 0;
 static uint8_t current_saturation = 255;
 static bool use_temperature_mode = false;
 static uint32_t current_temperature = 4000; // default is warm white (in kelvin)
-static bool adaptive_mode = true; // Flag for adaptive mode
+static led_strip_mode_t current_mode = MODE_MANUAL; // Default mode
+
+// State for Environmental Mode
+static uint8_t environmental_r = 0;
+static uint8_t environmental_g = 0;
+static uint8_t environmental_b = 150; // Default to blueish
 
 // Convert color temperature to RGB
 static void temp2rgb(uint32_t temp_k, uint8_t *r, uint8_t *g, uint8_t *b)
@@ -95,45 +101,79 @@ static uint32_t mired_to_kelvin(uint32_t mired)
 }
 
 // Update the LED strip based on current settings
-static esp_err_t update_led_strip()
+esp_err_t update_led_strip()
 {
     if (!led_strip) {
         ESP_LOGE(TAG, "LED strip not initialized");
         return ESP_ERR_INVALID_STATE;
     }
 
-    ESP_LOGI(TAG, "Updating LED strip - power:%d, adaptive:%d, temperature_mode:%d, brightness:%d", 
-            power_on, adaptive_mode, use_temperature_mode, current_brightness);
+    ESP_LOGI(TAG, "Updating LED strip - power:%d, mode:%d, brightness:%d",
+            power_on, current_mode, current_brightness);
 
     if (!power_on) {
-        // Turn off all LEDs
+        // Turn off all LEDs regardless of mode
+        ESP_LOGI(TAG, "Turning off all LEDs");
         for (int i = 0; i < strip_led_count; i++) {
             led_strip_set_pixel(led_strip, i, 0, 0, 0);
         }
-    } else if (!adaptive_mode) {
-        // Only update colors if not in adaptive mode
-        // Adaptive mode colors are set directly by the FFT algorithm
-        if (use_temperature_mode) {
-            uint8_t r, g, b;
-            temp2rgb(current_temperature, &r, &g, &b);
-            ESP_LOGI(TAG, "Setting all LEDs to temperature color: RGB(%d,%d,%d)", r, g, b);
-            for (int i = 0; i < strip_led_count; i++) {
-                led_strip_set_pixel(led_strip, i, r, g, b);
-            }
-        } else {
-            // Use led_strip_set_pixel_hsv for color mode
-            ESP_LOGI(TAG, "Setting all LEDs to HSV: (%d,%d,%d)", 
-                    current_hue, current_saturation, current_brightness);
-            for (int i = 0; i < strip_led_count; i++) {
-                // Let the library handle HSV conversion
-                led_strip_set_pixel_hsv(led_strip, i, current_hue, current_saturation, current_brightness);
-            }
+    } else {
+        // Handle different modes only if power is on
+        switch (current_mode) {
+            case MODE_MANUAL:
+                ESP_LOGI(TAG, "Updating in MANUAL mode");
+                if (use_temperature_mode) {
+                    uint8_t r, g, b;
+                    temp2rgb(current_temperature, &r, &g, &b);
+                    ESP_LOGI(TAG, "Setting all LEDs to temperature color: RGB(%d,%d,%d)", r, g, b);
+                    for (int i = 0; i < strip_led_count; i++) {
+                        led_strip_set_pixel(led_strip, i, r, g, b);
+                    }
+                } else {
+                    ESP_LOGI(TAG, "Setting all LEDs to HSV: (%d,%d,%d)",
+                            current_hue, current_saturation, current_brightness);
+                    for (int i = 0; i < strip_led_count; i++) {
+                        led_strip_set_pixel_hsv(led_strip, i, current_hue, current_saturation, current_brightness);
+                    }
+                }
+                break;
+
+            case MODE_ADAPTIVE:
+                ESP_LOGD(TAG, "Skipping update in ADAPTIVE mode (handled by FFT task)");
+                // Colors are set directly by the FFT algorithm via led_strip_set_pixel_color
+                // Refresh happens in led_strip_update() called by the task
+                break;
+
+            case MODE_ENVIRONMENTAL:
+            { // Add opening brace
+                ESP_LOGI(TAG, "Updating in ENVIRONMENTAL mode");
+                // Use the pre-calculated environmental colors, scaled by brightness
+                float brightness_scale = (float)current_brightness / 255.0f;
+                uint8_t r = (uint8_t)((float)environmental_r * brightness_scale);
+                uint8_t g = (uint8_t)((float)environmental_g * brightness_scale);
+                uint8_t b = (uint8_t)((float)environmental_b * brightness_scale);
+                ESP_LOGI(TAG, "Setting all LEDs to environmental color: RGB(%d,%d,%d)", r, g, b);
+                for (int i = 0; i < strip_led_count; i++) {
+                    led_strip_set_pixel(led_strip, i, r, g, b);
+                }
+            } // Add closing brace
+            break;
+
+            default:
+                ESP_LOGW(TAG, "Unknown mode: %d", current_mode);
+                break;
         }
     }
-    
-    // Refresh the strip
-    ESP_LOGI(TAG, "Refreshing LED strip display");
-    return led_strip_refresh(led_strip);
+
+    // Refresh the strip display unless in adaptive mode (refreshed by FFT task)
+    // Allow refresh even if power is off to ensure LEDs are cleared
+    if (current_mode != MODE_ADAPTIVE) {
+         ESP_LOGI(TAG, "Refreshing LED strip display for mode %d", current_mode);
+         return led_strip_refresh(led_strip);
+    } else {
+        // Adaptive mode refreshes in its own task via led_strip_update()
+        return ESP_OK;
+    }
 }
 
 esp_err_t led_strip_init(uint32_t gpio_num, uint16_t led_count)
@@ -213,8 +253,9 @@ esp_err_t led_strip_set_hue(uint16_t hue)
     }
     
     current_hue = hue;
-    use_temperature_mode = false;
-    ESP_LOGI(TAG, "Setting LED strip hue: %d", hue);
+    use_temperature_mode = false; // Setting Hue/Sat implies color mode
+    current_mode = MODE_MANUAL;   // Switch back to manual mode
+    ESP_LOGI(TAG, "Setting LED strip hue: %d (switched to MANUAL mode)", hue);
     return update_led_strip();
 }
 
@@ -226,8 +267,9 @@ esp_err_t led_strip_set_saturation(uint8_t saturation)
     }
     
     current_saturation = saturation;
-    use_temperature_mode = false;
-    ESP_LOGI(TAG, "Setting LED strip saturation: %d", saturation);
+    use_temperature_mode = false; // Setting Hue/Sat implies color mode
+    current_mode = MODE_MANUAL;   // Switch back to manual mode
+    ESP_LOGI(TAG, "Setting LED strip saturation: %d (switched to MANUAL mode)", saturation);
     return update_led_strip();
 }
 
@@ -238,39 +280,49 @@ esp_err_t led_strip_set_temperature(uint32_t temperature_mireds)
         return ESP_ERR_INVALID_STATE;
     }
     
-    ESP_LOGI(TAG, "Setting temperature: %lu mireds", (unsigned long)temperature_mireds);
+    ESP_LOGI(TAG, "Setting temperature: %lu mireds (switched to MANUAL mode)", (unsigned long)temperature_mireds);
     
     // Convert mireds to kelvin
     current_temperature = mired_to_kelvin(temperature_mireds);
     
-    // Enable temperature mode
+    // Enable temperature mode within MANUAL mode
     use_temperature_mode = true;
+    current_mode = MODE_MANUAL; // Switch back to manual mode
     
     // Apply the change
     return update_led_strip();
 }
 
-esp_err_t led_strip_set_adaptive_mode(bool enable)
+esp_err_t led_strip_set_mode(led_strip_mode_t mode)
 {
     if (!led_strip) {
         ESP_LOGE(TAG, "LED strip not initialized");
         return ESP_ERR_INVALID_STATE;
     }
-    
-    adaptive_mode = enable;
-    ESP_LOGI(TAG, "Setting LED strip adaptive mode: %s", enable ? "ON" : "OFF");
-    
-    // When disabling adaptive mode, update strip with current settings
-    if (!enable) {
-        return update_led_strip();
+
+    if (mode < MODE_MANUAL || mode > MODE_ENVIRONMENTAL) {
+         ESP_LOGE(TAG, "Invalid mode specified: %d", mode);
+         return ESP_ERR_INVALID_ARG;
     }
-    
+
+    current_mode = mode;
+    ESP_LOGI(TAG, "Setting LED strip mode: %d", mode);
+
+    // When switching mode, update the strip immediately to reflect the new mode's state
+    // (unless switching TO adaptive, which is handled by its task)
+    if (current_mode != MODE_ADAPTIVE) {
+        ESP_LOGI(TAG, "Triggering immediate update for mode switch (not to ADAPTIVE)");
+        return update_led_strip(); // Update immediately for Manual and Environmental
+    } else {
+        ESP_LOGI(TAG, "Skipping immediate update for mode switch (to ADAPTIVE)");
+    }
+
     return ESP_OK;
 }
 
-bool led_strip_get_adaptive_mode(void)
+led_strip_mode_t led_strip_get_mode(void)
 {
-    return adaptive_mode;
+    return current_mode;
 }
 
 esp_err_t led_strip_set_pixel_color(uint16_t pixel_index, uint8_t red, uint8_t green, uint8_t blue)
@@ -343,6 +395,58 @@ esp_err_t led_strip_update(void)
         ESP_LOGE(TAG, "LED strip not initialized");
         return ESP_ERR_INVALID_STATE;
     }
-    
-    return led_strip_refresh(led_strip);
+
+    // This function is primarily called by the adaptive task to refresh
+    // Check if still in adaptive mode before refreshing
+    if (current_mode == MODE_ADAPTIVE && power_on) {
+        ESP_LOGD(TAG, "Refreshing strip from led_strip_update (likely adaptive mode)");
+        return led_strip_refresh(led_strip);
+    } else {
+        ESP_LOGD(TAG, "Skipping refresh in led_strip_update (not adaptive/power off)");
+        return ESP_OK; // Don't refresh if not in adaptive mode or powered off
+    }
 }
+
+// --- Environmental Mode Logic ---
+// This function now ONLY updates the target environmental RGB values based on weather.
+// It does NOT apply them to the strip directly.
+esp_err_t led_strip_update_environmental_state(double temperature, int condition_id, const char* condition_desc) {
+    ESP_LOGI(TAG, "Updating target environmental state: Temp=%.1f, CondID=%d, Desc=%s", temperature, condition_id, condition_desc);
+
+    // Simple example logic based on condition description or ID
+    uint8_t r, g, b; // Temporary variables
+    if (strstr(condition_desc, "Clear") != NULL || condition_id == 800) {
+        // Sunny/Clear - Yellow/Orange
+        r = 255; g = 180; b = 0;
+        ESP_LOGI(TAG, "Target environmental color: Sunny/Clear");
+    } else if (strstr(condition_desc, "Clouds") != NULL || (condition_id >= 801 && condition_id <= 804)) {
+        // Cloudy - White/Grey
+        r = 200; g = 200; b = 200;
+        ESP_LOGI(TAG, "Target environmental color: Cloudy");
+    } else if (strstr(condition_desc, "Rain") != NULL || strstr(condition_desc, "Drizzle") != NULL || (condition_id >= 300 && condition_id <= 531)) {
+        // Rainy - Blue
+        r = 0; g = 80; b = 255;
+        ESP_LOGI(TAG, "Target environmental color: Rainy");
+    } else if (strstr(condition_desc, "Snow") != NULL || (condition_id >= 600 && condition_id <= 622)) {
+        // Snowy - Cool White
+        r = 220; g = 220; b = 255;
+        ESP_LOGI(TAG, "Target environmental color: Snowy");
+    } else if (strstr(condition_desc, "Thunderstorm") != NULL || (condition_id >= 200 && condition_id <= 232)) {
+        // Thunderstorm - Purple/Flashing (Flashing not implemented here, just color)
+        r = 128; g = 0; b = 255;
+        ESP_LOGI(TAG, "Target environmental color: Thunderstorm");
+    } else {
+        // Default/Unknown - Neutral White
+        r = 220; g = 210; b = 200;
+        ESP_LOGI(TAG, "Target environmental color: Default/Unknown");
+    }
+
+    // Update the static variables holding the target color
+    environmental_r = r;
+    environmental_g = g;
+    environmental_b = b;
+    ESP_LOGI(TAG, "Stored environmental target RGB: (%d, %d, %d)", environmental_r, environmental_g, environmental_b);
+
+    return ESP_OK;
+}
+// --- End Environmental Mode Logic ---
