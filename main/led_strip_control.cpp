@@ -5,6 +5,7 @@
 #include "driver/rmt_tx.h"
 #include "led_strip.h"
 #include <cmath>
+#include <string.h> // For strcmp
 
 static const char *TAG = "led_strip_control";
 
@@ -18,6 +19,11 @@ static uint8_t current_saturation = 255;
 static bool use_temperature_mode = false;
 static uint32_t current_temperature = 4000; // default is warm white (in kelvin)
 static led_strip_mode_t current_mode = MODE_MANUAL; // Default mode
+
+// State for Environmental Mode
+static uint8_t environmental_r = 0;
+static uint8_t environmental_g = 0;
+static uint8_t environmental_b = 150; // Default to blueish
 
 // Convert color temperature to RGB
 static void temp2rgb(uint32_t temp_k, uint8_t *r, uint8_t *g, uint8_t *b)
@@ -133,21 +139,25 @@ static esp_err_t update_led_strip()
                 break;
 
             case MODE_ADAPTIVE:
-                ESP_LOGI(TAG, "Skipping update in ADAPTIVE mode (handled by FFT task)");
+                ESP_LOGD(TAG, "Skipping update in ADAPTIVE mode (handled by FFT task)");
                 // Colors are set directly by the FFT algorithm via led_strip_set_pixel_color
-                // We only need to refresh the strip, which happens below.
+                // Refresh happens in led_strip_update() called by the task
                 break;
 
             case MODE_ENVIRONMENTAL:
-                ESP_LOGI(TAG, "Updating in ENVIRONMENTAL mode (placeholder)");
-                // TODO: Implement environmental logic based on fetched weather data
-                // For now, maybe set a default "environmental" color like blue?
+            { // Add opening brace
+                ESP_LOGI(TAG, "Updating in ENVIRONMENTAL mode");
+                // Use the pre-calculated environmental colors, scaled by brightness
+                float brightness_scale = (float)current_brightness / 255.0f;
+                uint8_t r = (uint8_t)((float)environmental_r * brightness_scale);
+                uint8_t g = (uint8_t)((float)environmental_g * brightness_scale);
+                uint8_t b = (uint8_t)((float)environmental_b * brightness_scale);
+                ESP_LOGI(TAG, "Setting all LEDs to environmental color: RGB(%d,%d,%d)", r, g, b);
                 for (int i = 0; i < strip_led_count; i++) {
-                     // Example: Dim blue scaled by brightness
-                    uint8_t scaled_blue = (uint8_t)((float)150 * ((float)current_brightness / 255.0f));
-                    led_strip_set_pixel(led_strip, i, 0, 0, scaled_blue);
+                    led_strip_set_pixel(led_strip, i, r, g, b);
                 }
-                break;
+            } // Add closing brace
+            break;
 
             default:
                 ESP_LOGW(TAG, "Unknown mode: %d", current_mode);
@@ -393,3 +403,57 @@ esp_err_t led_strip_update(void)
         return ESP_OK; // Don't refresh if not in adaptive mode or powered off
     }
 }
+
+// --- Environmental Mode Logic ---
+esp_err_t led_strip_update_environmental_state(double temperature, int condition_id, const char* condition_desc) {
+    ESP_LOGI(TAG, "Updating environmental state: Temp=%.1f, CondID=%d, Desc=%s", temperature, condition_id, condition_desc);
+
+    // Simple example logic based on condition description or ID
+    // (Expand this logic significantly based on desired effects)
+    if (strstr(condition_desc, "Clear") != NULL || condition_id == 800) {
+        // Sunny/Clear - Yellow/Orange
+        environmental_r = 255;
+        environmental_g = 180;
+        environmental_b = 0;
+        ESP_LOGI(TAG, "Environmental color: Sunny/Clear");
+    } else if (strstr(condition_desc, "Clouds") != NULL || (condition_id >= 801 && condition_id <= 804)) {
+        // Cloudy - White/Grey
+        environmental_r = 200;
+        environmental_g = 200;
+        environmental_b = 200;
+        ESP_LOGI(TAG, "Environmental color: Cloudy");
+    } else if (strstr(condition_desc, "Rain") != NULL || strstr(condition_desc, "Drizzle") != NULL || (condition_id >= 300 && condition_id <= 531)) {
+        // Rainy - Blue
+        environmental_r = 0;
+        environmental_g = 80;
+        environmental_b = 255;
+        ESP_LOGI(TAG, "Environmental color: Rainy");
+    } else if (strstr(condition_desc, "Snow") != NULL || (condition_id >= 600 && condition_id <= 622)) {
+        // Snowy - Cool White
+        environmental_r = 220;
+        environmental_g = 220;
+        environmental_b = 255;
+        ESP_LOGI(TAG, "Environmental color: Snowy");
+    } else if (strstr(condition_desc, "Thunderstorm") != NULL || (condition_id >= 200 && condition_id <= 232)) {
+        // Thunderstorm - Purple/Flashing (Flashing not implemented here, just color)
+        environmental_r = 128;
+        environmental_g = 0;
+        environmental_b = 255;
+        ESP_LOGI(TAG, "Environmental color: Thunderstorm");
+    } else {
+        // Default/Unknown - Neutral White
+        environmental_r = 220;
+        environmental_g = 210;
+        environmental_b = 200;
+        ESP_LOGI(TAG, "Environmental color: Default/Unknown");
+    }
+
+    // If currently in environmental mode, trigger an update to apply the new colors
+    if (current_mode == MODE_ENVIRONMENTAL) {
+        ESP_LOGI(TAG, "Triggering strip update for new environmental state");
+        return update_led_strip();
+    }
+
+    return ESP_OK;
+}
+// --- End Environmental Mode Logic ---

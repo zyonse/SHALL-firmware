@@ -120,19 +120,14 @@ esp_err_t led_strip_set_mode(led_strip_mode_t mode);
 led_strip_mode_t led_strip_get_mode(void);
 
 /**
- * @brief Enable or disable adaptive mode (for FFT-based color control)
- * 
- * @param enable true to enable adaptive mode, false to disable
+ * @brief Update the target state for environmental mode based on weather data
+ *
+ * @param temperature Current temperature (e.g., Celsius)
+ * @param condition_id Weather condition code (e.g., from OpenWeatherMap)
+ * @param condition_desc Weather condition description (e.g., "Clear", "Rain")
  * @return esp_err_t ESP_OK on success
  */
-esp_err_t led_strip_set_adaptive_mode(bool enable);
-
-/**
- * @brief Get current adaptive mode state
- * 
- * @return true if adaptive mode is enabled, false otherwise
- */
-bool led_strip_get_adaptive_mode(void);
+esp_err_t led_strip_update_environmental_state(double temperature, int condition_id, const char* condition_desc);
 
 /**
  * @brief Set the color of an individual pixel (for use by FFT algorithm)

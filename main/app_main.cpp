@@ -31,6 +31,7 @@ using namespace chip::DeviceLayer;
 #include "led_strip_control.h"
 #include "web_server.h"
 #include "FFT.h"
+#include "weather.h"
 
 static const char *TAG = "app_main";
 uint16_t light_endpoint_id = 0;
@@ -190,36 +191,35 @@ static void adaptive_mode_task(void *pvParameters)
     }
 }
 
-// Task to periodically update lighting based on environmental conditions (placeholder)
+// Task to periodically update lighting based on environmental conditions
 static void environmental_mode_task(void *pvParameters)
 {
     TickType_t last_wake_time = xTaskGetTickCount();
-    // Update less frequently than adaptive mode, e.g., every 5 minutes
-    const TickType_t frequency = pdMS_TO_TICKS(5 * 60 * 1000);
+    const TickType_t frequency = pdMS_TO_TICKS(15 * 60 * 1000); // Update every 15 minutes
 
     while (1) {
-        if (led_strip_get_mode() == MODE_ENVIRONMENTAL && led_strip_get_power_state()) {
-            ESP_LOGI(TAG, "Environmental mode active - fetching weather data (placeholder)");
-            // --- Placeholder for Weather API Call ---
-            // 1. Make HTTP request to weather API
-            // 2. Parse response (e.g., JSON)
-            // 3. Extract temperature, condition code/description, etc.
-            // --- End Placeholder ---
+        // Add diagnostic logging before the check
+        led_strip_mode_t current_mode = led_strip_get_mode();
+        bool power_state = led_strip_get_power_state();
+        ESP_LOGD(TAG, "Environmental task check: Current Mode=%d (Expected %d), Power State=%s",
+                 current_mode, MODE_ENVIRONMENTAL, power_state ? "ON" : "OFF");
 
-            // --- Placeholder for Color Calculation ---
-            // Based on fetched weather data, calculate target color/pattern
-            // Example: Sunny -> Yellow/Orange, Cloudy -> White/Grey, Rainy -> Blue
-            ESP_LOGI(TAG, "Updating LEDs for environmental conditions (placeholder)");
-            // This logic might directly call led_strip_set_pixel and led_strip_update,
-            // or it could call a dedicated function in led_strip_control if preferred.
-            // For now, the update_led_strip function has basic placeholder logic.
-            // We might need to trigger an update explicitly if logic moves here.
-            // led_strip_update(); // Or call update_led_strip() if it handles env mode directly
-            // For simplicity, rely on the logic within update_led_strip triggered by set_mode or brightness changes.
-            // If weather changes need immediate effect without other changes, call update_led_strip() here.
+        if (current_mode == MODE_ENVIRONMENTAL && power_state) {
+            ESP_LOGI(TAG, "Environmental mode active - triggering weather fetch.");
+            esp_err_t weather_err = fetch_and_update_weather_state();
+            if (weather_err != ESP_OK) {
+                ESP_LOGE(TAG, "Failed to fetch or update weather state: %s", esp_err_to_name(weather_err));
+                // Optional: Implement retry logic or fallback behavior here
+            }
+        } else {
+             // If not in environmental mode or powered off, delay before next check
+             // Use a shorter delay if just checking status, longer if actually fetching
+             TickType_t delay_ticks = (current_mode == MODE_ENVIRONMENTAL && power_state) ? frequency : pdMS_TO_TICKS(5000);
+             vTaskDelayUntil(&last_wake_time, delay_ticks); // Use vTaskDelayUntil for consistent timing
+             continue; // Skip the main frequency delay at the end if we delayed here
         }
 
-        // Wait until the next update interval
+        // Wait until the next update interval (only reached if weather fetch was attempted)
         vTaskDelayUntil(&last_wake_time, frequency);
     }
 }
@@ -333,6 +333,10 @@ extern "C" void app_main()
     // Initialize and start the web server after Matter is configured
     web_server_init();
     web_server_start();
+
+    /* Initialize Weather Module */
+    weather_init(); // Added here
+
     if (!initialize_fft()) {
         ESP_LOGE(TAG, "FFT initialization failed");
         return;
@@ -343,7 +347,7 @@ extern "C" void app_main()
     }
 
     // Create task for environmental mode processing
-    xTaskCreate(environmental_mode_task, "environmental_mode_task", 4096, NULL, 4, NULL); // Lower priority than adaptive
+    xTaskCreate(environmental_mode_task, "environmental_mode_task", 8192, NULL, 4, NULL); // Lower priority than adaptive
         
     ESP_LOGI(TAG, "Web server initialized and started");
 }
