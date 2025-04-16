@@ -34,6 +34,7 @@ using namespace chip::DeviceLayer;
 #include "web_server.h"
 #include "FFT.h"
 #include "weather.h"
+#include "display.h"
 
 static const char *TAG = "app_main";
 uint16_t light_endpoint_id = 0;
@@ -248,6 +249,22 @@ static void environmental_mode_task(void *pvParameters)
     }
 }
 
+// Task to periodically update the display
+static void display_update_task(void *pvParameters)
+{
+    TickType_t last_wake_time = xTaskGetTickCount();
+    const TickType_t frequency = pdMS_TO_TICKS(1000); // Update display every 1 second
+
+    while (1) {
+        esp_err_t err = update_display();
+        if (err != ESP_OK) {
+            ESP_LOGE(TAG, "Failed to update display: %s", esp_err_to_name(err));
+        }
+        // Delay until next cycle
+        vTaskDelayUntil(&last_wake_time, frequency);
+    }
+}
+
 extern "C" void app_main()
 {
     esp_err_t err = ESP_OK;
@@ -395,4 +412,17 @@ extern "C" void app_main()
     xTaskCreate(environmental_mode_task, "environmental_mode_task", 8192, NULL, 4, NULL); // Lower priority than adaptive
         
     ESP_LOGI(TAG, "Web server initialized and started");
+
+    // --- Initialize Display ---
+    ESP_LOGI(TAG, "Initializing Display...");
+    err = init_display();
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "Display initialization failed: %s", esp_err_to_name(err));
+    } else {
+        ESP_LOGI(TAG, "Display initialized successfully. Starting display tasks...");
+        // Create task for display updates
+        xTaskCreate(display_update_task, "display_update_task", 4096, NULL, 3, NULL); // Adjust stack size and priority as needed
+        ESP_LOGI(TAG, "Display update task started.");
+    }
+    // --- End Display Initialization ---
 }
