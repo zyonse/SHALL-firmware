@@ -7,6 +7,7 @@
 #include "esp_dsp.h"
 #include "led_strip_control.h"
 #include "freq_color_mapper.h"
+#include "jetson_uart.h"
 
 adc_oneshot_unit_handle_t adc_handle;
 
@@ -97,12 +98,15 @@ void fft_control_lights() {
 
     float freq, mag;
     get_dominant_frequency(&freq, &mag);
-    printf("Dominant Frequency: %.2f Hz, Magnitude: %.2f\n", freq, mag);
+    // printf("Dominant Frequency: %.2f Hz, Magnitude: %.2f\n", freq, mag);
 
     int brightness = (int)(mag / 4095.0f * 255.0f);
     if (brightness > 255) brightness = 255;
 
     rgb_t color = map_frequency_to_color(freq, mag);
+    jetson_send_color(color); // Send color to Jetson
+    printf("Color: R:%d G:%d B:%d\n", color.r, color.g, color.b);
+    // printf("Brightness: %d\n", brightness);
 
     for (int i = 0; i < LED_COUNT; i++) {
         led_strip_set_pixel_color(i, color.r, color.g, color.b);
