@@ -179,13 +179,11 @@ static void adaptive_mode_task(void *pvParameters)
 {
     TickType_t last_wake_time = xTaskGetTickCount();
     const TickType_t frequency = pdMS_TO_TICKS(500); // Adaptive mode sample frequency
-    uart_init();
     
     while (1) {
         // If in adaptive mode, run the FFT control
         if (led_strip_get_adaptive_mode() && led_strip_get_power_state()) {
             fft_control_lights();
-            // uart_send("Hello Jetson!\n");
         }
         
         // Sleep until next second
@@ -306,7 +304,8 @@ extern "C" void app_main()
         ESP_LOGE(TAG, "FFT initialization failed");
         return;
     } else {
-        // Create task for adaptive mode FFT processing
+        // Init UART and create task for adaptive mode FFT processing
+        uart_init();
         xTaskCreate(adaptive_mode_task, "adaptive_mode_task", 4096, NULL, 5, NULL);
 
     }
