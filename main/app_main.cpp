@@ -31,6 +31,7 @@ using namespace chip::DeviceLayer;
 #include "led_strip_control.h"
 #include "web_server.h"
 #include "FFT.h"
+#include "jetson_uart.h"
 
 static const char *TAG = "app_main";
 uint16_t light_endpoint_id = 0;
@@ -178,11 +179,13 @@ static void adaptive_mode_task(void *pvParameters)
 {
     TickType_t last_wake_time = xTaskGetTickCount();
     const TickType_t frequency = pdMS_TO_TICKS(500); // Adaptive mode sample frequency
+    uart_init();
     
     while (1) {
         // If in adaptive mode, run the FFT control
         if (led_strip_get_adaptive_mode() && led_strip_get_power_state()) {
             fft_control_lights();
+            // uart_send("Hello Jetson!\n");
         }
         
         // Sleep until next second
