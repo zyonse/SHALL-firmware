@@ -34,7 +34,10 @@ using namespace chip::DeviceLayer;
 #include "web_server.h"
 #include "FFT.h"
 #include "weather.h"
+
+// display
 #include "display.h"
+#include "lvgl.h"
 
 static const char *TAG = "app_main";
 uint16_t light_endpoint_id = 0;
@@ -250,20 +253,20 @@ static void environmental_mode_task(void *pvParameters)
 }
 
 // Task to periodically update the display
-static void display_update_task(void *pvParameters)
-{
-    TickType_t last_wake_time = xTaskGetTickCount();
-    const TickType_t frequency = pdMS_TO_TICKS(1000); // Update display every 1 second
+// static void display_update_task(void *pvParameters)
+// {
+//     TickType_t last_wake_time = xTaskGetTickCount();
+//     const TickType_t frequency = pdMS_TO_TICKS(1000); // Update display every 1 second
 
-    while (1) {
-        esp_err_t err = update_display();
-        if (err != ESP_OK) {
-            ESP_LOGE(TAG, "Failed to update display: %s", esp_err_to_name(err));
-        }
-        // Delay until next cycle
-        vTaskDelayUntil(&last_wake_time, frequency);
-    }
-}
+//     while (1) {
+//         esp_err_t err = update_display();
+//         if (err != ESP_OK) {
+//             ESP_LOGE(TAG, "Failed to update display: %s", esp_err_to_name(err));
+//         }
+//         // Delay until next cycle
+//         vTaskDelayUntil(&last_wake_time, frequency);
+//     }
+// }
 
 extern "C" void app_main()
 {
@@ -346,6 +349,12 @@ extern "C" void app_main()
 #endif
 #endif // CONFIG_ENABLE_SET_CERT_DECLARATION_API
 
+    /* Memory Debugging */
+    ESP_LOGI(TAG, "Free heap before BLE init: %lu", esp_get_free_heap_size());
+    ESP_LOGI(TAG, "Free heap: %zu", heap_caps_get_free_size(MALLOC_CAP_EXEC));
+    ESP_LOGI(TAG, "Largest free block: %zu", heap_caps_get_largest_free_block(MALLOC_CAP_8BIT));
+    ESP_LOGI(TAG, "Free IRAM: %zu", heap_caps_get_free_size(MALLOC_CAP_EXEC));
+
     /* Matter start */
     err = esp_matter::start(app_event_cb);
     ABORT_APP_ON_FAILURE(err == ESP_OK, ESP_LOGE(TAG, "Failed to start Matter, err:%d", err));
@@ -414,15 +423,28 @@ extern "C" void app_main()
     ESP_LOGI(TAG, "Web server initialized and started");
 
     // --- Initialize Display ---
+   // ESP_LOGI(TAG, "Free heap at boot: %u", esp_get_free_heap_size());
     ESP_LOGI(TAG, "Initializing Display...");
-    err = init_display();
-    if (err != ESP_OK) {
-        ESP_LOGE(TAG, "Display initialization failed: %s", esp_err_to_name(err));
-    } else {
-        ESP_LOGI(TAG, "Display initialized successfully. Starting display tasks...");
-        // Create task for display updates
-        xTaskCreate(display_update_task, "display_update_task", 4096, NULL, 3, NULL); // Adjust stack size and priority as needed
-        ESP_LOGI(TAG, "Display update task started.");
-    }
+    ESP_LOGI("LVGL", "LVGL version: %d.%d.%d", LVGL_VERSION_MAJOR, LVGL_VERSION_MINOR, LVGL_VERSION_PATCH);
+
+    // start the LVGL tick task to increment LVGL's internal tick count.
+    xTaskCreate(lv_tick_task, "lv_tick_task", 4096, NULL, 1, NULL);
+
+    // Initialize display 
+    // Launch the LVGL app in its own task to avoid watchdog timeouts
+    xTaskCreatePinnedToCore(start_lvgl_app, "lvgl_main_task", 8192, NULL, 3, NULL, 0);
+
+
+    // The code below is not needed, there is log handling already within the function call
+    // if (err != ESP_OK) {
+    //     ESP_LOGE(TAG, "Display initialization failed: %s", esp_err_to_name(err));
+    // } else {
+    //     ESP_LOGI(TAG, "Display initialized successfully. Starting display tasks...");
+    //     // Create task for display updates
+    //     xTaskCreate(lv_tick_task, "display_update_task", 4096, NULL, 3, NULL); // Adjust stack size and priority as needed
+    //     ESP_LOGI(TAG, "Display update task started.");
+    // }
+
+   
     // --- End Display Initialization ---
 }

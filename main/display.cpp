@@ -1,3 +1,6 @@
+extern "C" {
+    #include "display.h"
+    }
 //--- DISPLAY LIBRARIES, CONNECTIONS, GLOBAL VARIBALES, EXAMPLE OF LABEL
 #include "esp_lcd_panel_io.h"
 #include "esp_lcd_panel_ops.h"
@@ -50,9 +53,17 @@ esp_lcd_panel_io_handle_t io_handle;
 
 #include <time.h> // time and ntp library
 #include "esp_sntp.h"
+#include "esp_task_wdt.h"
 
-#define WIFI_SSID      "redacted"    // phone hotspot
-#define WIFI_PASSWORD  "redacted"
+// WiFi - SSID + Passwords
+// #define WIFI_SSID      "iPhoneG"    // phone hotspot
+// #define WIFI_PASSWORD  "test12345"
+
+#define WIFI_SSID      "TP-Link_3990"    // phone hotspot
+#define WIFI_PASSWORD  "50309856"
+
+// #define WIFI_SSID      "daboyz"    // wifi
+// #define WIFI_PASSWORD  "yitbosEK22"
 
 // Global variables for UI updates //
 lv_obj_t* wifi_status_label = NULL;
@@ -65,10 +76,13 @@ char global_wifi_status[64] = "";
 volatile bool time_updated = false;
 char global_time_str[64] = "";
 //-----------------------------------------------------------------------
+// Spotify Creds
+
 
 #include "esp_http_client.h"
 #include <cJSON.h>
 lv_obj_t* spotify_label = NULL;
+//#include "ip_config.h"  // defines BACKEND_IP
 
 //-----------------------------------------------------------------------
 
@@ -78,7 +92,7 @@ static void wifi_event_handler(void* arg, esp_event_base_t event_base,
 void sync_time_with_ntp(void);
 void update_time_label(lv_timer_t *timer);
 void init_wifi(void);
-void init_display(void);
+//void init_display(void);
 //-----------------------------------------------------------------------
 
 /**  
@@ -258,6 +272,8 @@ void init_display(void) {
         .user_ctx = NULL,
         .lcd_cmd_bits = 8,  
         .lcd_param_bits = 8, 
+        .cs_ena_pretrans = 0,
+        .cs_ena_posttrans = 0,
         .flags = {0}
     };
 
@@ -269,6 +285,8 @@ void init_display(void) {
     else{
         ESP_LOGI(TAG, "ILI9341 driver Initialized");
     }
+
+    vTaskDelay(pdMS_TO_TICKS(10)); // addded
 
     // Configure & initialize the ILI9341 driver panel
     esp_lcd_panel_dev_config_t panel_config = {
@@ -287,7 +305,10 @@ void init_display(void) {
         ESP_LOGI(TAG, "ILI9341 driver Configured");
     }
 
+    vTaskDelay(pdMS_TO_TICKS(10)); // addded
+
     // Reset & Initialize TFT Display
+    vTaskDelay(pdMS_TO_TICKS(10)); // addded
     esp_lcd_panel_reset(panel);
     esp_lcd_panel_init(panel);
     esp_lcd_panel_disp_on_off(panel, true);
@@ -298,23 +319,34 @@ void init_display(void) {
 
     // DISPLAY SETUP: LVGL Display Buffer & Driver ---
     // display buffer
-    static lv_color_t buf1[240 * 40];
-    static lv_color_t buf2[240 * 40];
+    // static lv_color_t buf1[240 * 40];
+    // static lv_color_t buf2[240 * 40];
+    // Allocate LVGL buffers using DMA-capable memory
+    static lv_color_t *buf1 = (lv_color_t *)heap_caps_malloc(sizeof(lv_color_t) * 240 * 40, MALLOC_CAP_DMA | MALLOC_CAP_INTERNAL);
+    static lv_color_t *buf2 = (lv_color_t *)heap_caps_malloc(sizeof(lv_color_t) * 240 * 40, MALLOC_CAP_DMA | MALLOC_CAP_INTERNAL);
+
+    
 
     // LVGL rendering pixels and send to display
     lv_display_t *disp = lv_display_create(240, 320);
+    lv_display_set_buffers(disp, buf1, NULL, sizeof(buf1), LV_DISPLAY_RENDER_MODE_PARTIAL);
     lv_display_set_rotation(disp, LV_DISPLAY_ROTATION_90);
 
     // Physical hardware adjustment
     esp_lcd_panel_swap_xy(panel, true);
     esp_lcd_panel_mirror(panel, true, false);
 
-    lv_display_set_buffers(disp, buf1, buf2, sizeof(buf1), LV_DISPLAY_RENDER_MODE_PARTIAL);
+    //lv_display_set_buffers(disp, buf1, buf2, sizeof(buf1), LV_DISPLAY_RENDER_MODE_PARTIAL);
+    esp_task_wdt_reset();  // Before
+    //lv_display_set_buffers(disp, buf1, buf2, sizeof(lv_color_t) * 240 * 40, LV_DISPLAY_RENDER_MODE_PARTIAL);
+    esp_task_wdt_reset();  // After
+    vTaskDelay(pdMS_TO_TICKS(10));
+
     lv_display_set_flush_cb(disp, [](lv_display_t * disp, const lv_area_t * area, uint8_t * color_p) {
         if (panel && area && color_p) {
-            esp_lcd_panel_draw_bitmap(panel, area->x1, area->y1, area->x2 + 1, area->y2 + 1, (lv_color_t *)color_p);
-            lv_display_flush_ready(disp);
+            esp_lcd_panel_draw_bitmap(panel, area->x1, area->y1, area->x2 + 1, area->y2 + 1, (lv_color_t *)color_p);         
         }
+        lv_display_flush_ready(disp);
     });
 
     // mirroring control
@@ -335,34 +367,57 @@ void init_display(void) {
     // lv_obj_set_style_local_text_color(screen, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, LV_COLOR_WHITE);
 }
 
-// void start_and_update_spotify(lv_timer_t *timer) {
-//     lv_obj_t* label = (lv_obj_t*)timer->user_data;
+void start_and_update_spotify(lv_timer_t *timer) {
+    lv_obj_t* label = (lv_obj_t*)lv_timer_get_user_data(timer);
 
-//     esp_http_client_config_t config = {
-//         .url = "http://10.0.0.150:8888/current-track",  // replace with your IP
-//         .method = HTTP_METHOD_GET,
-//     };
+    esp_http_client_config_t config = {
+        .url = "http://127.0.0.1:8888/current-track",
+        //.url = BACKEND_IP,
+        .method = HTTP_METHOD_GET,
+    };
 
-//     esp_http_client_handle_t client = esp_http_client_init(&config);
-//     if (esp_http_client_perform(client) == ESP_OK) {
-//         int len = esp_http_client_get_content_length(client);
-//         char* buffer = (char*)malloc(len + 1);
-//         esp_http_client_read_response(client, buffer, len);
-//         buffer[len] = '\0';
+    esp_http_client_handle_t client = esp_http_client_init(&config);
+    ESP_LOGI("SPOTIFY", "Performing HTTP GET to %s", config.url);
 
-//         cJSON* json = cJSON_Parse(buffer);
-//         if (json) {
-//             const char* song = cJSON_GetObjectItem(json, "song")->valuestring;
-//             const char* artist = cJSON_GetObjectItem(json, "artist")->valuestring;
-//             char output[128];
-//             snprintf(output, sizeof(output), "Spotify: %s - %s", song, artist);
-//             lv_label_set_text(label, output);
-//             cJSON_Delete(json);
-//         }
-//         free(buffer);
-//     }
-//     esp_http_client_cleanup(client);
-// }
+    esp_err_t err = esp_http_client_perform(client);
+    if (err == ESP_OK) {
+        int status = esp_http_client_get_status_code(client);
+        ESP_LOGI("SPOTIFY", "HTTP status code: %d", status);
+
+        const int buf_size = 256;
+        char buffer[buf_size];
+        int read_len = esp_http_client_read_response(client, buffer, buf_size - 1);
+
+        if (read_len >= 0) {
+            buffer[read_len] = '\0';  // Null terminate
+            ESP_LOGI("SPOTIFY", "Response content: %s", buffer);
+
+            cJSON* json = cJSON_Parse(buffer);
+            if (json) {
+                const cJSON* song = cJSON_GetObjectItem(json, "song");
+                const cJSON* artist = cJSON_GetObjectItem(json, "artist");
+
+                if (cJSON_IsString(song) && cJSON_IsString(artist)) {
+                    char output[128];
+                    snprintf(output, sizeof(output), "Spotify: %s - %s", song->valuestring, artist->valuestring);
+                    lv_label_set_text(label, output);
+                } else {
+                    ESP_LOGE("SPOTIFY", "JSON missing song or artist");
+                }
+
+                cJSON_Delete(json);
+            } else {
+                ESP_LOGE("SPOTIFY", "Failed to parse JSON. Raw: %s", buffer);
+            }
+        } else {
+            ESP_LOGE("SPOTIFY", "Failed to read HTTP response");
+        }
+    } else {
+        ESP_LOGE("SPOTIFY", "HTTP request failed: %s", esp_err_to_name(err));
+    }
+
+    esp_http_client_cleanup(client);
+}
 
 /**
  * @brief This function
@@ -372,25 +427,30 @@ void init_display(void) {
 void lv_tick_task(void *arg) {
     (void)arg;
     while (1) {
-        lv_tick_inc(900); // increment LVGL tick 1ms
-        vTaskDelay(pdMS_TO_TICKS(900));
+        lv_tick_inc(5); // increment LVGL tick 1ms
+        vTaskDelay(pdMS_TO_TICKS(5));
     }
 }
 
 // MAIN FUNCTION
-extern "C" void app_main() {
+void start_lvgl_app(void *pvParameters) {
     ESP_LOGI("LVGL", "LVGL version: %d.%d.%d", LVGL_VERSION_MAJOR, LVGL_VERSION_MINOR, LVGL_VERSION_PATCH);
     
+
+    esp_task_wdt_add(NULL); // Register current task to feed watchdog
+
     // start the LVGL tick task to increment LVGL's internal tick count.
     xTaskCreate(lv_tick_task, "lv_tick_task", 1024, NULL, 1, NULL);
 
     // Initialize display and WiFi
     init_display();
-    init_wifi();     
+    vTaskDelay(pdMS_TO_TICKS(100));  // Yield briefly
+    esp_task_wdt_reset();            // Reset the watchdog
+    //init_wifi();     
 
-     // set time
-     setenv("TZ", "EST5EDT", 1);
-     tzset();
+    // set time
+    setenv("TZ", "EST5EDT", 1);
+    tzset();
 
     // Create a new screen and load it so that it becomes active
     lv_obj_t *screen = lv_obj_create(NULL);
@@ -402,12 +462,12 @@ extern "C" void app_main() {
 
     // Create the time label on the active screen
     time_label = lv_label_create(screen);
-    lv_label_set_text(time_label, "");
-    lv_label_set_long_mode(time_label, LV_LABEL_LONG_CLIP);
-    lv_obj_set_width(time_label, 400);
-    lv_obj_set_style_text_color(time_label, lv_palette_main(LV_PALETTE_RED), LV_PART_MAIN); // Use LVGL predefined green // Explicit green
-    lv_obj_set_style_text_font(time_label, &lv_font_montserrat_14, LV_PART_MAIN);
-    lv_obj_align(time_label, LV_ALIGN_TOP_LEFT, 0, 0);
+    lv_label_set_text(time_label, "Hello World");
+    // lv_label_set_long_mode(time_label, LV_LABEL_LONG_CLIP);
+    // lv_obj_set_width(time_label, 400);
+    // lv_obj_set_style_text_color(time_label, lv_palette_main(LV_PALETTE_RED), LV_PART_MAIN); // Use LVGL predefined green // Explicit green
+    // lv_obj_set_style_text_font(time_label, &lv_font_montserrat_14, LV_PART_MAIN);
+    // lv_obj_align(time_label, LV_ALIGN_TOP_LEFT, 0, 0);
 
     // Spotify Label
     // spotify_label = lv_label_create(screen);
@@ -415,15 +475,70 @@ extern "C" void app_main() {
     // lv_obj_set_style_text_color(spotify_label, lv_color_green(), LV_PART_MAIN);
     // lv_obj_set_style_text_font(spotify_label, &lv_font_montserrat_14, LV_PART_MAIN);
     // lv_obj_align(spotify_label, LV_ALIGN_LEFT_MID, 0, 20);
+    // lv_timer_create(start_and_update_spotify, 10000, spotify_label);
 
     // Schedule the time update task to run every 1000 ms (1 second).
     //lv_task_t *time_task = lv_task_create(update_time_label, 500, LV_TASK_PRIO_LOW, NULL);
     void update_time_label(lv_timer_t *timer);
     lv_timer_create(update_time_label, 500, NULL);  // call every 500ms
+    esp_task_wdt_reset();
 
-    // Main loop: process LVGL tasks.
+    //Main loop: process LVGL tasks.
     while (1) {
+        esp_task_wdt_reset();
         lv_timer_handler(); 
         vTaskDelay(pdMS_TO_TICKS(100));
     }
 }
+
+// // MAIN FUNCTION
+// extern "C" void app_main() {
+//     ESP_LOGI("LVGL", "LVGL version: %d.%d.%d", LVGL_VERSION_MAJOR, LVGL_VERSION_MINOR, LVGL_VERSION_PATCH);
+    
+//     // start the LVGL tick task to increment LVGL's internal tick count.
+//     xTaskCreate(lv_tick_task, "lv_tick_task", 1024, NULL, 1, NULL);
+
+//     // Initialize display and WiFi
+//     init_display();
+//     init_wifi();     
+
+//      // set time
+//      setenv("TZ", "EST5EDT", 1);
+//      tzset();
+
+//     // Create a new screen and load it so that it becomes active
+//     lv_obj_t *screen = lv_obj_create(NULL);
+//     lv_scr_load(screen);
+//     lv_obj_set_style_bg_color(screen, lv_color_black(), LV_PART_MAIN);
+
+//     lv_obj_clear_flag(screen, LV_OBJ_FLAG_SCROLLABLE); // ensure no weird scroll artifacts
+//     lv_obj_set_style_bg_color(screen, lv_color_black(), LV_PART_MAIN);
+
+//     // Create the time label on the active screen
+//     time_label = lv_label_create(screen);
+//     lv_label_set_text(time_label, "");
+//     lv_label_set_long_mode(time_label, LV_LABEL_LONG_CLIP);
+//     lv_obj_set_width(time_label, 400);
+//     lv_obj_set_style_text_color(time_label, lv_palette_main(LV_PALETTE_RED), LV_PART_MAIN); // Use LVGL predefined green // Explicit green
+//     lv_obj_set_style_text_font(time_label, &lv_font_montserrat_14, LV_PART_MAIN);
+//     lv_obj_align(time_label, LV_ALIGN_TOP_LEFT, 0, 0);
+
+//     // Spotify Label
+//     // spotify_label = lv_label_create(screen);
+//     // lv_label_set_text(spotify_label, "Spotify: --");
+//     // lv_obj_set_style_text_color(spotify_label, lv_color_green(), LV_PART_MAIN);
+//     // lv_obj_set_style_text_font(spotify_label, &lv_font_montserrat_14, LV_PART_MAIN);
+//     // lv_obj_align(spotify_label, LV_ALIGN_LEFT_MID, 0, 20);
+//     // lv_timer_create(start_and_update_spotify, 10000, spotify_label);
+
+//     // Schedule the time update task to run every 1000 ms (1 second).
+//     //lv_task_t *time_task = lv_task_create(update_time_label, 500, LV_TASK_PRIO_LOW, NULL);
+//     void update_time_label(lv_timer_t *timer);
+//     lv_timer_create(update_time_label, 500, NULL);  // call every 500ms
+
+//     // Main loop: process LVGL tasks.
+//     while (1) {
+//         lv_timer_handler(); 
+//         vTaskDelay(pdMS_TO_TICKS(100));
+//     }
+// }

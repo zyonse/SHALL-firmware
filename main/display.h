@@ -16,7 +16,7 @@ extern "C" {
  *
  * @return ESP_OK on success, or an error code on failure.
  */
-esp_err_t init_display(void);
+void init_display(void);
 
 /**
  * @brief Periodic task for display refresh
@@ -26,6 +26,10 @@ esp_err_t init_display(void);
  * @return ESP_OK on success, or an error code if task creation fails.
  */
 esp_err_t update_display(void);
+
+void lv_tick_task(void *arg);
+void start_lvgl_app(void *pvParameters);
+
 
 #ifdef __cplusplus
 }
