@@ -3,6 +3,7 @@
 #include <esp_log.h>
 #include <esp_http_server.h>
 #include <cJSON.h>
+#include <string.h> // For strcmp
 
 static const char *TAG = "web_server";
 static httpd_handle_t server = NULL;
@@ -52,14 +53,25 @@ static cJSON* parse_json_request(httpd_req_t *req) {
 // API endpoint to get LED strip status
 static esp_err_t get_status_handler(httpd_req_t *req) {
     ESP_LOGI(TAG, "GET /api/status");
-    
+
     cJSON *root = cJSON_CreateObject();
     cJSON_AddBoolToObject(root, "power", led_strip_get_power_state());
     cJSON_AddNumberToObject(root, "brightness", led_strip_get_brightness());
     cJSON_AddNumberToObject(root, "hue", led_strip_get_hue());
     cJSON_AddNumberToObject(root, "saturation", led_strip_get_saturation());
-    cJSON_AddBoolToObject(root, "adaptive_mode", led_strip_get_adaptive_mode());
-    
+    // cJSON_AddBoolToObject(root, "adaptive_mode", led_strip_get_adaptive_mode()); // Removed
+
+    // Add current mode string
+    led_strip_mode_t current_mode = led_strip_get_mode();
+    const char *mode_str;
+    switch (current_mode) {
+        case MODE_ADAPTIVE: mode_str = "adaptive"; break;
+        case MODE_ENVIRONMENTAL: mode_str = "environmental"; break;
+        case MODE_MANUAL:
+        default: mode_str = "manual"; break;
+    }
+    cJSON_AddStringToObject(root, "mode", mode_str);
+
     return send_json_response(req, root);
 }
 
@@ -189,37 +201,59 @@ static esp_err_t set_color_handler(httpd_req_t *req) {
     return send_json_response(req, root);
 }
 
-// API endpoint to control adaptive mode
-static esp_err_t set_adaptive_mode_handler(httpd_req_t *req) {
-    ESP_LOGI(TAG, "POST /api/adaptive_mode");
-    
+// API endpoint to control mode
+static esp_err_t set_mode_handler(httpd_req_t *req) {
+    ESP_LOGI(TAG, "POST /api/mode");
+
     cJSON *root = parse_json_request(req);
     if (!root) {
         httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Invalid JSON");
         return ESP_FAIL;
     }
-    
-    cJSON *mode_json = cJSON_GetObjectItem(root, "adaptive_mode");
-    if (!cJSON_IsBool(mode_json)) {
+
+    cJSON *mode_json = cJSON_GetObjectItem(root, "mode");
+    if (!cJSON_IsString(mode_json) || (mode_json->valuestring == NULL)) {
         cJSON_Delete(root);
-        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Missing 'adaptive_mode' field");
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Missing or invalid 'mode' field (must be string)");
         return ESP_FAIL;
     }
-    
-    bool mode = cJSON_IsTrue(mode_json);
+
+    led_strip_mode_t new_mode;
+    const char *mode_str = mode_json->valuestring;
+
+    if (strcmp(mode_str, "manual") == 0) {
+        new_mode = MODE_MANUAL;
+    } else if (strcmp(mode_str, "adaptive") == 0) {
+        new_mode = MODE_ADAPTIVE;
+    } else if (strcmp(mode_str, "environmental") == 0) {
+        new_mode = MODE_ENVIRONMENTAL;
+    } else {
+        cJSON_Delete(root);
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Invalid mode value. Use 'manual', 'adaptive', or 'environmental'.");
+        return ESP_FAIL;
+    }
+
     cJSON_Delete(root);
-    
-    esp_err_t err = led_strip_set_adaptive_mode(mode);
+
+    esp_err_t err = led_strip_set_mode(new_mode);
     if (err != ESP_OK) {
-        httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Failed to set adaptive mode");
+        httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Failed to set mode");
         return ESP_FAIL;
     }
-    
+
     // Return success response
     root = cJSON_CreateObject();
     cJSON_AddBoolToObject(root, "success", true);
-    cJSON_AddBoolToObject(root, "adaptive_mode", led_strip_get_adaptive_mode());
-    
+    // Return the mode string that was actually set
+    led_strip_mode_t current_mode = led_strip_get_mode();
+    switch (current_mode) {
+        case MODE_ADAPTIVE: mode_str = "adaptive"; break;
+        case MODE_ENVIRONMENTAL: mode_str = "environmental"; break;
+        case MODE_MANUAL:
+        default: mode_str = "manual"; break;
+    }
+    cJSON_AddStringToObject(root, "mode", mode_str);
+
     return send_json_response(req, root);
 }
 
@@ -290,14 +324,15 @@ esp_err_t web_server_start(void) {
         .user_ctx = NULL
     };
     httpd_register_uri_handler(server, &color_uri);
-    
-    httpd_uri_t adaptive_uri = {
-        .uri = "/api/adaptive_mode",
+
+    // Add new mode endpoint
+    httpd_uri_t mode_uri = {
+        .uri = "/api/mode",
         .method = HTTP_POST,
-        .handler = set_adaptive_mode_handler,
+        .handler = set_mode_handler,
         .user_ctx = NULL
     };
-    httpd_register_uri_handler(server, &adaptive_uri);
+    httpd_register_uri_handler(server, &mode_uri);
 
     // CORS options handler for each endpoint
     httpd_uri_t options_uri_status = {
@@ -331,14 +366,15 @@ esp_err_t web_server_start(void) {
         .user_ctx = NULL
     };
     httpd_register_uri_handler(server, &options_uri_color);
-    
-    httpd_uri_t options_uri_adaptive = {
-        .uri = "/api/adaptive_mode",
+
+    // Add OPTIONS handler for mode endpoint
+    httpd_uri_t options_uri_mode = {
+        .uri = "/api/mode",
         .method = HTTP_OPTIONS,
         .handler = options_handler,
         .user_ctx = NULL
     };
-    httpd_register_uri_handler(server, &options_uri_adaptive);
+    httpd_register_uri_handler(server, &options_uri_mode);
     
     ESP_LOGI(TAG, "Web server started successfully");
     return ESP_OK;
