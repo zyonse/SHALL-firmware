@@ -33,6 +33,7 @@ using namespace chip::DeviceLayer;
 #include "led_strip_control.h"
 #include "web_server.h"
 #include "FFT.h"
+#include "jetson_uart.h"
 #include "weather.h"
 
 static const char *TAG = "app_main";
@@ -386,7 +387,8 @@ extern "C" void app_main()
         ESP_LOGE(TAG, "FFT initialization failed");
         return;
     } else {
-        // Create task for adaptive mode FFT processing
+        // Init UART and create task for adaptive mode FFT processing
+        uart_init();
         xTaskCreate(adaptive_mode_task, "adaptive_mode_task", 4096, NULL, 5, NULL);
 
     }
