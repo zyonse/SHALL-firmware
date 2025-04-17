@@ -272,8 +272,6 @@ void init_display(void) {
         .user_ctx = NULL,
         .lcd_cmd_bits = 8,  
         .lcd_param_bits = 8, 
-        .cs_ena_pretrans = 0,
-        .cs_ena_posttrans = 0,
         .flags = {0}
     };
 
@@ -324,12 +322,12 @@ void init_display(void) {
     // Allocate LVGL buffers using DMA-capable memory
     static lv_color_t *buf1 = (lv_color_t *)heap_caps_malloc(sizeof(lv_color_t) * 240 * 40, MALLOC_CAP_DMA | MALLOC_CAP_INTERNAL);
     static lv_color_t *buf2 = (lv_color_t *)heap_caps_malloc(sizeof(lv_color_t) * 240 * 40, MALLOC_CAP_DMA | MALLOC_CAP_INTERNAL);
-
-    
+    // Number of pixels in each buffer
+    const uint32_t buf_pixels = 240 * 40;
 
     // LVGL rendering pixels and send to display
     lv_display_t *disp = lv_display_create(240, 320);
-    lv_display_set_buffers(disp, buf1, NULL, sizeof(buf1), LV_DISPLAY_RENDER_MODE_PARTIAL);
+    lv_display_set_buffers(disp, buf1, NULL, buf_pixels, LV_DISPLAY_RENDER_MODE_PARTIAL);
     lv_display_set_rotation(disp, LV_DISPLAY_ROTATION_90);
 
     // Physical hardware adjustment
