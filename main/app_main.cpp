@@ -252,22 +252,6 @@ static void environmental_mode_task(void *pvParameters)
     }
 }
 
-// Task to periodically update the display
-// static void display_update_task(void *pvParameters)
-// {
-//     TickType_t last_wake_time = xTaskGetTickCount();
-//     const TickType_t frequency = pdMS_TO_TICKS(1000); // Update display every 1 second
-
-//     while (1) {
-//         esp_err_t err = update_display();
-//         if (err != ESP_OK) {
-//             ESP_LOGE(TAG, "Failed to update display: %s", esp_err_to_name(err));
-//         }
-//         // Delay until next cycle
-//         vTaskDelayUntil(&last_wake_time, frequency);
-//     }
-// }
-
 extern "C" void app_main()
 {
     esp_err_t err = ESP_OK;
@@ -422,18 +406,18 @@ extern "C" void app_main()
         
     ESP_LOGI(TAG, "Web server initialized and started");
 
-    // --- Initialize Display ---
-    ESP_LOGI(TAG, "Initializing Display...");
-    ESP_LOGI("LVGL", "LVGL version: %d.%d.%d", LVGL_VERSION_MAJOR, LVGL_VERSION_MINOR, LVGL_VERSION_PATCH);
+    // --- Initialize Display and Show Static Message ---
+    ESP_LOGI(TAG, "Initializing Display for static message...");
+    init_display(); // Initialize display hardware and LVGL core
 
-    // start the LVGL tick task to increment LVGL's internal tick count.
-    // Run on Core 1 (network core) with low priority to avoid interfering with Core 0 tasks.
-    xTaskCreatePinnedToCore(lv_tick_task, "lv_tick_task", 2048, NULL, 1, NULL, 1); // Priority 1, Core 1
+    ESP_LOGI(TAG, "Displaying static message...");
+    display_static_message(); // Create the LVGL objects for the message
 
-    // Initialize display
-    // Launch the LVGL app in its own task to avoid watchdog timeouts during init/main loop
-    // Pin to Core 0 (App Core) and increase priority slightly
-    xTaskCreatePinnedToCore(start_lvgl_app, "lvgl_main_task", 8192, NULL, 4, NULL, 0); // Priority 4, Core 0
+    ESP_LOGI(TAG, "Triggering LVGL render/flush...");
+    lv_timer_handler(); // Call handler once to process drawing
 
+    // Add a small delay to allow the SPI transaction/DMA to complete
+    vTaskDelay(pdMS_TO_TICKS(100));
+    ESP_LOGI(TAG, "Static display update complete. No further display tasks running.");
     // --- End Display Initialization ---
 }

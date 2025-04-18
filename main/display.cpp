@@ -9,7 +9,6 @@ extern "C" {
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
-#include "esp_task_wdt.h"
 
 // LVGL (graphically library for TFT)
 #include "lvgl.h"
@@ -140,55 +139,34 @@ void init_display(void) {
 }
 
 /**
- * @brief LVGL Tick Task
- * Increments LVGL's internal tick counter periodically.
- * @note Recommended to call lv_tick_inc every 1-10ms.
+ * @brief Displays a static message once.
  */
-void lv_tick_task(void *arg) {
-    (void)arg;
-    const TickType_t tick_period_ms = 10; // Call lv_tick_inc every 10ms
-    while (1) {
-        lv_tick_inc(tick_period_ms);
-        vTaskDelay(pdMS_TO_TICKS(tick_period_ms));
-    }
-}
-
-// MAIN FUNCTION for LVGL App Task
-void start_lvgl_app(void *pvParameters) {
-    ESP_LOGI("LVGL", "LVGL App Task Started");
-
-    esp_task_wdt_add(NULL); // Register current task to feed watchdog
-    esp_task_wdt_reset();   // Initial reset
-
-    // Initialize display
-    init_display();
-    esp_task_wdt_reset(); // Reset after potentially long init
-
+void display_static_message(void) {
     // Create a new screen and load it so that it becomes active
     lv_obj_t *screen = lv_obj_create(NULL);
+    if (!screen) {
+        ESP_LOGE(TAG, "Failed to create screen");
+        return;
+    }
     lv_scr_load(screen);
     lv_obj_set_style_bg_color(screen, lv_color_black(), LV_PART_MAIN);
     lv_obj_clear_flag(screen, LV_OBJ_FLAG_SCROLLABLE);
-    ESP_LOGI(TAG, "LVGL Screen Created");
+    ESP_LOGI(TAG, "LVGL Screen Created for static message");
 
     // Create the static label on the active screen
     lv_obj_t *static_label = lv_label_create(screen);
+    if (!static_label) {
+        ESP_LOGE(TAG, "Failed to create static label");
+        // Consider cleaning up screen object if needed
+        return;
+    }
     lv_label_set_text(static_label, "SHALL Initializing...");
     lv_obj_set_style_text_color(static_label, lv_color_white(), LV_PART_MAIN);
+    // Consider adding font styling if needed:
+    // lv_obj_set_style_text_font(static_label, &lv_font_montserrat_22, LV_PART_MAIN);
     lv_obj_align(static_label, LV_ALIGN_CENTER, 0, 0);
     ESP_LOGI(TAG, "Static Label Created");
 
-    esp_task_wdt_reset(); // Reset before entering loop
-
-    // Main loop: process LVGL tasks.
-    while (1) {
-        esp_task_wdt_reset(); // Reset watchdog at the start of the loop
-        uint32_t time_ms = lv_timer_handler();
-        if (time_ms < 5) {
-            time_ms = 5;
-        } else if (time_ms > 500) {
-            time_ms = 500;
-        }
-        vTaskDelay(pdMS_TO_TICKS(time_ms));
-    }
+    // Note: lv_timer_handler() needs to be called once externally after this function
+    // to trigger the rendering and flushing process.
 }

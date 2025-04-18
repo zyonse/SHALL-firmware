@@ -11,16 +11,16 @@ extern "C" {
  * @brief Initializes the TFT display hardware and LVGL library.
  *
  * Sets up SPI communication, configures the ILI9341 driver,
- * initializes LVGL, creates the display driver, and sets up
- * the basic screen elements (like the time label).
+ * initializes LVGL, and creates the display driver.
  *
- * @return ESP_OK on success, or an error code on failure.
  */
 void init_display(void);
 
-void lv_tick_task(void *arg);
-void start_lvgl_app(void *pvParameters);
-
+/**
+ * @brief Displays a static message on the screen once.
+ * Assumes init_display() has been called.
+ */
+void display_static_message(void);
 
 #ifdef __cplusplus
 }
