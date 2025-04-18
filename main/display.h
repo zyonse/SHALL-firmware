@@ -18,15 +18,6 @@ extern "C" {
  */
 void init_display(void);
 
-/**
- * @brief Periodic task for display refresh
- *
- * Run from app_main to handle LVGL tasks and update the display.
- *
- * @return ESP_OK on success, or an error code if task creation fails.
- */
-esp_err_t update_display(void);
-
 void lv_tick_task(void *arg);
 void start_lvgl_app(void *pvParameters);
 

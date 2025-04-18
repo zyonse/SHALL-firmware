@@ -423,28 +423,17 @@ extern "C" void app_main()
     ESP_LOGI(TAG, "Web server initialized and started");
 
     // --- Initialize Display ---
-   // ESP_LOGI(TAG, "Free heap at boot: %u", esp_get_free_heap_size());
     ESP_LOGI(TAG, "Initializing Display...");
     ESP_LOGI("LVGL", "LVGL version: %d.%d.%d", LVGL_VERSION_MAJOR, LVGL_VERSION_MINOR, LVGL_VERSION_PATCH);
 
     // start the LVGL tick task to increment LVGL's internal tick count.
-    xTaskCreate(lv_tick_task, "lv_tick_task", 4096, NULL, 1, NULL);
+    // Run on Core 1 (network core) with low priority to avoid interfering with Core 0 tasks.
+    xTaskCreatePinnedToCore(lv_tick_task, "lv_tick_task", 2048, NULL, 1, NULL, 1); // Priority 1, Core 1
 
-    // Initialize display 
-    // Launch the LVGL app in its own task to avoid watchdog timeouts
-    xTaskCreatePinnedToCore(start_lvgl_app, "lvgl_main_task", 8192, NULL, 3, NULL, 0);
+    // Initialize display
+    // Launch the LVGL app in its own task to avoid watchdog timeouts during init/main loop
+    // Pin to Core 0 (App Core) and increase priority slightly
+    xTaskCreatePinnedToCore(start_lvgl_app, "lvgl_main_task", 8192, NULL, 4, NULL, 0); // Priority 4, Core 0
 
-
-    // The code below is not needed, there is log handling already within the function call
-    // if (err != ESP_OK) {
-    //     ESP_LOGE(TAG, "Display initialization failed: %s", esp_err_to_name(err));
-    // } else {
-    //     ESP_LOGI(TAG, "Display initialized successfully. Starting display tasks...");
-    //     // Create task for display updates
-    //     xTaskCreate(lv_tick_task, "display_update_task", 4096, NULL, 3, NULL); // Adjust stack size and priority as needed
-    //     ESP_LOGI(TAG, "Display update task started.");
-    // }
-
-   
     // --- End Display Initialization ---
 }
