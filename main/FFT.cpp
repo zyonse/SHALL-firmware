@@ -98,7 +98,7 @@ void fft_control_lights() {
 
     float freq, mag;
     get_dominant_frequency(&freq, &mag);
-    // printf("Dominant Frequency: %.2f Hz, Magnitude: %.2f\n", freq, mag);
+    printf("Dominant Frequency: %.2f Hz, Magnitude: %.2f\n", freq, mag);
 
     int brightness = (int)(mag / 4095.0f * 255.0f);
     if (brightness > 255) brightness = 255;

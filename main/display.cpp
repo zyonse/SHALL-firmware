@@ -121,7 +121,7 @@ void init_display(void) {
 
     // Physical hardware adjustment - Apply necessary transformations
     esp_lcd_panel_swap_xy(panel, true);
-    esp_lcd_panel_mirror(panel, true, false);
+    esp_lcd_panel_mirror(panel, false, false);
     lv_display_set_rotation(disp, LV_DISPLAY_ROTATION_90);
     ESP_LOGI(TAG, "Display Orientation Configured");
 
@@ -160,7 +160,7 @@ void display_static_message(void) {
         // Consider cleaning up screen object if needed
         return;
     }
-    lv_label_set_text(static_label, "SHALL Initializing...");
+    lv_label_set_text(static_label, "SHALL");
     lv_obj_set_style_text_color(static_label, lv_color_white(), LV_PART_MAIN);
     // Consider adding font styling if needed:
     // lv_obj_set_style_text_font(static_label, &lv_font_montserrat_22, LV_PART_MAIN);

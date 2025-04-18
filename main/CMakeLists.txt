@@ -3,6 +3,7 @@ idf_component_register(SRCS
                        "display.cpp"
                        "app_driver.cpp"
                        "FFT.cpp"
+                       "jetson_uart.cpp"
                        "led_strip_control.cpp"
                        "weather.c"
                        "web_server.cpp"
