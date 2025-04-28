@@ -256,7 +256,7 @@ esp_err_t app_driver_light_set_defaults(uint16_t endpoint_id)
 app_driver_handle_t app_driver_light_init()
 {
     // Initialize LED strip with GPIO and LED count
-    esp_err_t err = led_strip_init(36, LED_COUNT);
+    esp_err_t err = led_strip_init(2, LED_COUNT);
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "Failed to initialize LED strip: %s", esp_err_to_name(err));
     }
@@ -264,7 +264,7 @@ app_driver_handle_t app_driver_light_init()
     // Retry once more after a short delay if failed
     if (err != ESP_OK) {
         vTaskDelay(pdMS_TO_TICKS(500));
-        err = led_strip_init(36, LED_COUNT);
+        err = led_strip_init(2, LED_COUNT);
         if (err != ESP_OK) {
             ESP_LOGE(TAG, "Second attempt to initialize LED strip failed: %s", esp_err_to_name(err));
         }

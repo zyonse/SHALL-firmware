@@ -1,4 +1,13 @@
-idf_component_register(SRC_DIRS          "."
+idf_component_register(SRCS
+                       "app_main.cpp"
+                       "display.cpp"
+                       "app_driver.cpp"
+                       "FFT.cpp"
+                       "jetson_uart.cpp"
+                       "led_strip_control.cpp"
+                       "weather.c"
+                       "web_server.cpp"
+                       "freq_color_mapper.c"
                        PRIV_INCLUDE_DIRS  "." "${ESP_MATTER_PATH}/examples/common/utils")
 
 if (CONFIG_ENABLE_SET_CERT_DECLARATION_API)

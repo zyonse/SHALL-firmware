@@ -36,6 +36,10 @@ using namespace chip::DeviceLayer;
 #include "jetson_uart.h"
 #include "weather.h"
 
+// display
+#include "display.h"
+#include "lvgl.h"
+
 static const char *TAG = "app_main";
 uint16_t light_endpoint_id = 0;
 
@@ -330,6 +334,12 @@ extern "C" void app_main()
 #endif
 #endif // CONFIG_ENABLE_SET_CERT_DECLARATION_API
 
+    /* Memory Debugging */
+    ESP_LOGI(TAG, "Free heap before BLE init: %lu", esp_get_free_heap_size());
+    ESP_LOGI(TAG, "Free heap: %zu", heap_caps_get_free_size(MALLOC_CAP_EXEC));
+    ESP_LOGI(TAG, "Largest free block: %zu", heap_caps_get_largest_free_block(MALLOC_CAP_8BIT));
+    ESP_LOGI(TAG, "Free IRAM: %zu", heap_caps_get_free_size(MALLOC_CAP_EXEC));
+
     /* Matter start */
     err = esp_matter::start(app_event_cb);
     ABORT_APP_ON_FAILURE(err == ESP_OK, ESP_LOGE(TAG, "Failed to start Matter, err:%d", err));
@@ -354,6 +364,14 @@ extern "C" void app_main()
 #endif
     esp_matter::console::init();
 #endif
+
+    // Don’t run any code after this line if Matter isn’t paired. Wait for Matter to pair first
+    ESP_LOGI(TAG, "Waiting for Matter pairing...");
+    while (chip::Server::GetInstance().GetFabricTable().FabricCount() == 0) {
+        vTaskDelay(pdMS_TO_TICKS(1000));
+    }
+    vTaskDelay(pdMS_TO_TICKS(10000)); // Give some time for the pairing to stabilize
+    ESP_LOGI(TAG, "Matter paired. Continuing startup.");
 
     // Initialize and start the web server after Matter is configured
     web_server_init();
@@ -397,4 +415,19 @@ extern "C" void app_main()
     xTaskCreate(environmental_mode_task, "environmental_mode_task", 8192, NULL, 4, NULL); // Lower priority than adaptive
         
     ESP_LOGI(TAG, "Web server initialized and started");
+
+    // --- Initialize Display and Show Static Message ---
+    ESP_LOGI(TAG, "Initializing Display for static message...");
+    init_display(); // Initialize display hardware and LVGL core
+
+    ESP_LOGI(TAG, "Displaying static message...");
+    display_static_message(); // Create the LVGL objects for the message
+
+    ESP_LOGI(TAG, "Triggering LVGL render/flush...");
+    lv_timer_handler(); // Call handler once to process drawing
+
+    // Add a small delay to allow the SPI transaction/DMA to complete
+    vTaskDelay(pdMS_TO_TICKS(100));
+    ESP_LOGI(TAG, "Static display update complete. No further display tasks running.");
+    // --- End Display Initialization ---
 }
