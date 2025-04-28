@@ -365,6 +365,14 @@ extern "C" void app_main()
     esp_matter::console::init();
 #endif
 
+    // Don’t run any code after this line if Matter isn’t paired. Wait for Matter to pair first
+    ESP_LOGI(TAG, "Waiting for Matter pairing...");
+    while (chip::Server::GetInstance().GetFabricTable().FabricCount() == 0) {
+        vTaskDelay(pdMS_TO_TICKS(1000));
+    }
+    vTaskDelay(pdMS_TO_TICKS(10000)); // Give some time for the pairing to stabilize
+    ESP_LOGI(TAG, "Matter paired. Continuing startup.");
+
     // Initialize and start the web server after Matter is configured
     web_server_init();
     web_server_start();
