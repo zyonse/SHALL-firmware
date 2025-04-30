@@ -160,7 +160,7 @@ void display_static_message(void) {
         // Consider cleaning up screen object if needed
         return;
     }
-    lv_label_set_text(static_label, "SHALL");
+    lv_label_set_text(static_label, "SHALL Connected");
     lv_obj_set_style_text_color(static_label, lv_color_white(), LV_PART_MAIN);
     // Consider adding font styling if needed:
     // lv_obj_set_style_text_font(static_label, &lv_font_montserrat_22, LV_PART_MAIN);
